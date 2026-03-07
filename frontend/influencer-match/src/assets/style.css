@@ -1,0 +1,218 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
+
+:root {
+  --bg-0: #f4f7fb;
+  --bg-1: #eaf1f8;
+  --ink-0: #0f172a;
+  --ink-1: #334155;
+  --line: rgba(15, 23, 42, 0.12);
+
+  --brand: #0e7490;
+  --brand-2: #1d4ed8;
+  --accent: #f59e0b;
+  --success: #059669;
+  --danger: #dc2626;
+
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-strong: rgba(255, 255, 255, 0.88);
+  --shadow-soft: 0 10px 40px rgba(15, 23, 42, 0.1);
+  --shadow-lift: 0 18px 55px rgba(14, 116, 144, 0.22);
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  color: var(--ink-0);
+  background:
+    radial-gradient(800px 420px at 8% -8%, rgba(14, 116, 144, 0.15), transparent 55%),
+    radial-gradient(750px 420px at 105% 5%, rgba(29, 78, 216, 0.14), transparent 50%),
+    linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  overflow-x: hidden;
+}
+
+#app {
+  position: relative;
+}
+
+#app::before,
+#app::after {
+  content: '';
+  position: fixed;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  filter: blur(40px);
+  z-index: -1;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+#app::before {
+  top: 12%;
+  left: -90px;
+  background: #22d3ee;
+  animation: float-a 9s ease-in-out infinite;
+}
+
+#app::after {
+  bottom: 8%;
+  right: -100px;
+  background: #60a5fa;
+  animation: float-b 11s ease-in-out infinite;
+}
+
+@keyframes float-a {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-24px); }
+}
+
+@keyframes float-b {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(20px); }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.navbar-brand {
+  font-family: 'Sora', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.app-main {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 2rem;
+}
+
+.app-footer {
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.85));
+  backdrop-filter: blur(12px);
+}
+
+.glass {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+}
+
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: var(--radius-lg);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
+.btn {
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  border: none;
+  background: linear-gradient(120deg, var(--brand), var(--brand-2));
+  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.28);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 14px 28px rgba(29, 78, 216, 0.3);
+}
+
+.btn-outline-primary {
+  border-color: rgba(29, 78, 216, 0.38);
+  color: var(--brand-2);
+}
+
+.btn-outline-primary:hover {
+  background: rgba(29, 78, 216, 0.08);
+  border-color: rgba(29, 78, 216, 0.52);
+  color: #1e40af;
+}
+
+.form-control,
+.form-select,
+.input-group-text {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(14, 116, 144, 0.55);
+  box-shadow: 0 0 0 0.2rem rgba(14, 116, 144, 0.16);
+}
+
+.fade-up {
+  animation: fade-up 0.5s ease both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nav-modern {
+  margin: 12px auto 0;
+  max-width: min(1400px, calc(100% - 24px));
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.86), rgba(14, 116, 144, 0.84));
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.28);
+}
+
+.nav-modern .nav-link {
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+}
+
+.nav-modern .nav-link.router-link-active,
+.nav-modern .nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+@media (max-width: 992px) {
+  .nav-modern {
+    margin: 0;
+    max-width: 100%;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+  }
+}

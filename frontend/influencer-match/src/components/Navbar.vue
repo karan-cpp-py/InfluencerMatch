@@ -1,0 +1,197 @@
+<template>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top nav-modern">
+    <div class="container-fluid">
+      <router-link class="navbar-brand fw-bold d-flex align-items-center gap-2" to="/">
+        <span class="badge rounded-pill text-bg-light text-dark fw-bold">IM</span>
+        <span class="brand-text">InfluencerMatch</span>
+      </router-link>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#navbarSupportedContent"
+        aria-controls="navbarSupportedContent"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <router-link class="nav-link" to="/">Home</router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/plans">Plans</router-link>
+          </li>
+          <li class="nav-item">
+            <router-link class="nav-link" :to="{ path: '/plans', hash: '#book-demo' }">Book Demo</router-link>
+          </li>
+
+          <!-- Guest links -->
+          <li v-if="!token" class="nav-item">
+            <router-link class="nav-link" to="/login">Login</router-link>
+          </li>
+          <li v-if="!token" class="nav-item">
+            <router-link class="nav-link" to="/register">Register</router-link>
+          </li>
+
+          <!-- Creator (self-registered) links -->
+          <li v-if="token && role === 'Creator'" class="nav-item">
+            <router-link class="nav-link" to="/creator/onboarding">
+              Onboarding
+            </router-link>
+          </li>
+          <li v-if="token && role === 'Creator'" class="nav-item">
+            <router-link class="nav-link" to="/creator-dashboard">
+              My Dashboard
+            </router-link>
+          </li>
+
+          <!-- SuperAdmin links -->
+          <li v-if="token && role === 'SuperAdmin'" class="nav-item">
+            <router-link class="nav-link fw-semibold" to="/admin">⚙️ Admin Panel</router-link>
+          </li>
+
+          <!-- Legacy Influencer links -->
+          <li v-if="token && role === 'Influencer'" class="nav-item">
+            <router-link class="nav-link" to="/influencer">My Profile</router-link>
+          </li>
+          <li v-if="token && role === 'Influencer'" class="nav-item">
+            <router-link class="nav-link" to="/campaigns">Browse Campaigns</router-link>
+          </li>
+
+          <!-- Customer links -->
+          <template v-if="token && customerUserRoles.includes(role)">
+            <li class="nav-item" v-if="platformConfig.features.enableMarketplace">
+              <router-link class="nav-link" to="/marketplace">🔍 Marketplace</router-link>
+            </li>
+            <li class="nav-item" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+              <router-link class="nav-link" to="/brand">Create Campaign</router-link>
+            </li>
+            <li class="nav-item" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+              <router-link class="nav-link" to="/brand/campaigns">My Campaigns</router-link>
+            </li>
+            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
+              <router-link class="nav-link" to="/workspace/team">Team Workspace</router-link>
+            </li>
+            <li class="nav-item" v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation">
+              <router-link class="nav-link" to="/brand/waitlist">Brand Waitlist</router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/dashboard-config">Dashboard Config</router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/onboarding">Onboarding</router-link>
+            </li>
+            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
+              <router-link class="nav-link" to="/brand/campaign-onboarding">Campaign Wizard</router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/subscriptions">Subscription</router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/notifications">Notifications</router-link>
+            </li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                Discover
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><router-link class="dropdown-item" to="/discovery">Creator Discovery</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/search">Creator Search</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/rising">Rising Creators</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/leaderboard">Leaderboard</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/compare">Compare</router-link></li>
+                <li><hr class="dropdown-divider"/></li>
+                <li v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/analytics">Brand Analytics</router-link></li>
+                <li v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/opportunities">Opportunities</router-link></li>
+                <li v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/waitlist">Brand Activation Waitlist</router-link></li>
+                <li><router-link class="dropdown-item" to="/videos/trending">Trending Videos</router-link></li>
+              </ul>
+            </li>
+          </template>
+        </ul>
+
+        <div v-if="token" class="d-flex align-items-center gap-2 nav-user-tools">
+          <NotificationBell />
+          <span class="badge rounded-pill text-bg-light text-dark fw-semibold">{{ role }}</span>
+          <span class="navbar-text text-white-50 small d-none d-md-inline">{{ userName }}</span>
+          <button class="btn btn-sm btn-light fw-semibold" @click="logout">Logout</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+</template>
+
+<script setup>
+import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { authToken, authRole, authUserName, clearAuth } from '../services/auth';
+import { platformConfig } from '../services/platform';
+import NotificationBell from './NotificationBell.vue';
+
+const router = useRouter();
+const token = computed(() => authToken.value);
+const role = computed(() => authRole.value);
+const userName = computed(() => authUserName.value);
+const customerUserRoles = ['Brand', 'Agency', 'Individual', 'CreatorManager'];
+const brandOpsRoles = ['Brand', 'Agency'];
+
+function logout() {
+  clearAuth();
+  router.push('/');
+}
+</script>
+
+<style scoped>
+.nav-modern .container-fluid {
+  gap: 0.45rem;
+}
+
+.nav-modern .navbar-brand {
+  min-width: 0;
+  max-width: min(52vw, 640px);
+}
+
+.brand-text {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 992px) {
+  .nav-modern .navbar-collapse {
+    min-width: 0;
+  }
+
+  .nav-modern .navbar-nav {
+    flex-wrap: wrap;
+    row-gap: 0.2rem;
+  }
+
+  .nav-user-tools {
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  .nav-user-tools .navbar-text {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .nav-modern .navbar-brand {
+    max-width: calc(100% - 62px);
+  }
+}
+</style>
+

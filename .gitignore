@@ -1,0 +1,48 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+**/.vs/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/influencer-match/node_modules/
+frontend/influencer-match/dist/
+frontend/influencer-match/test-results/
+frontend/influencer-match/playwright-report/
+
+# .NET build artifacts
+**/bin/
+**/obj/
+
+# User/secret settings
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+**/secrets.json
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+*.key
+*.crt
+
+# Misc
+*.tmp
+*.bak
+backups/
+backend/backups/

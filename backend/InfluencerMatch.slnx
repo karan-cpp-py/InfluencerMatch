@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="InfluencerMatch.API/InfluencerMatch.API.csproj" />
+  <Project Path="InfluencerMatch.Application/InfluencerMatch.Application.csproj" />
+  <Project Path="InfluencerMatch.Domain/InfluencerMatch.Domain.csproj" />
+  <Project Path="InfluencerMatch.Infrastructure/InfluencerMatch.Infrastructure.csproj" />
+</Solution>
