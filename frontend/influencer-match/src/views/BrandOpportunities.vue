@@ -124,7 +124,16 @@
               </div>
               <div class="col-4">
                 <div class="p-2 rounded" style="background:#f8fafc">
-                  <div class="fw-bold small">{{ (c.engagementRate * 100).toFixed(2) }}%</div>
+                  <div class="fw-bold small">{{ opportunityEngagementMeta(c).formatted }}</div>
+                  <span
+                    v-if="opportunityEngagementMeta(c).badgeText"
+                    class="badge mt-1"
+                    :class="opportunityEngagementMeta(c).badgeClass"
+                    :title="opportunityEngagementMeta(c).tooltip"
+                    style="font-size:10px;"
+                  >
+                    {{ opportunityEngagementMeta(c).badgeText }}
+                  </span>
                   <div style="font-size:.7rem" class="text-muted">Engagement</div>
                 </div>
               </div>
@@ -169,6 +178,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
+import { engagementMeta } from '../utils/engagement'
 
 const results = ref([])
 const loading = ref(false)
@@ -232,6 +242,15 @@ const categoryBadgeClass = cat =>
 const topOpportunityScore = computed(() => results.value[0]?.opportunityScore ?? 0)
 const avgEstimatedPrice   = computed(() => results.value.length ? results.value.reduce((s, c) => s + c.estimatedPrice, 0) / results.value.length : 0)
 const totalReach          = computed(() => results.value.reduce((s, c) => s + c.subscribers, 0))
+
+function opportunityEngagementMeta(creator) {
+  return engagementMeta(creator?.engagementRate, {
+    mode: 'ratio',
+    sampleCount: creator?.videoCount,
+    minSampleCount: 3,
+    fallback: '—'
+  })
+}
 
 async function findOpportunities() {
   loading.value  = true

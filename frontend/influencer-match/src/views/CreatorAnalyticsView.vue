@@ -76,7 +76,15 @@
             <div class="card border-0 shadow-sm h-100 panel-card">
               <div class="card-body text-center">
                 <div class="text-muted small mb-1">ENG. RATE</div>
-                <div class="fs-4 fw-bold" :class="engClass(data.engagementRate)">{{ pct(data.engagementRate) }}</div>
+                <div class="fs-4 fw-bold" :class="engagementInfo.className">{{ engagementInfo.formatted }}</div>
+                <span
+                  v-if="engagementInfo.badgeText"
+                  class="badge mt-1"
+                  :class="engagementInfo.badgeClass"
+                  :title="engagementInfo.tooltip"
+                >
+                  {{ engagementInfo.badgeText }}
+                </span>
               </div>
             </div>
           </div>
@@ -213,6 +221,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
+import { engagementMeta } from '../utils/engagement';
 
 const route     = useRoute();
 const creatorId = route.params.id;
@@ -225,6 +234,16 @@ const scoreLoading   = ref(false);
 const scoreRefreshing= ref(false);
 const error          = ref('');
 const tooltip        = ref(null);
+
+const engagementInfo = computed(() => {
+  if (!data.value) return engagementMeta(null);
+  return engagementMeta(data.value.engagementRate, {
+    mode: 'ratio',
+    sampleCount: Number(data.value.totalVideos),
+    minSampleCount: 3,
+    fallback: '—'
+  });
+});
 
 const scoreComponents = [
   { key: 'engagementComponent', label: 'Engagement',  weight: '40%', color: 'bg-primary'   },
@@ -251,8 +270,6 @@ function compact(n) {
   if (v>=1e3) return (v/1e3).toFixed(1)+'K';
   return String(v);
 }
-function pct(n) { return n!=null?(Number(n)*100).toFixed(2)+'%':'—'; }
-function engClass(r) { const v=Number(r||0); if(v>=0.05) return 'text-success fw-bold'; if(v>=0.02) return 'text-warning'; return 'text-danger'; }
 function timeAgo(dateStr) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();

@@ -25,7 +25,15 @@
           <div class="col-6 col-md-3">
             <article class="metric-card">
               <p class="metric-label">Engagement</p>
-              <p class="metric-value">{{ pct(influencer.engagementRate) }}</p>
+              <p class="metric-value">{{ influencerEngagementMeta.formatted }}</p>
+              <span
+                v-if="influencerEngagementMeta.badgeText"
+                class="badge mt-1"
+                :class="influencerEngagementMeta.badgeClass"
+                :title="influencerEngagementMeta.tooltip"
+              >
+                {{ influencerEngagementMeta.badgeText }}
+              </span>
             </article>
           </div>
           <div class="col-6 col-md-3">
@@ -48,7 +56,21 @@
             <div class="row g-3">
               <div class="col-md-6">
                 <p class="detail-item"><span>Followers</span><strong>{{ Number(influencer.followers || 0).toLocaleString() }}</strong></p>
-                <p class="detail-item"><span>Engagement Rate</span><strong>{{ pct(influencer.engagementRate) }}</strong></p>
+                <p class="detail-item">
+                  <span>Engagement Rate</span>
+                  <strong class="d-inline-flex align-items-center gap-1">
+                    {{ influencerEngagementMeta.formatted }}
+                    <span
+                      v-if="influencerEngagementMeta.badgeText"
+                      class="badge"
+                      :class="influencerEngagementMeta.badgeClass"
+                      :title="influencerEngagementMeta.tooltip"
+                      style="font-size:10px;"
+                    >
+                      {{ influencerEngagementMeta.badgeText }}
+                    </span>
+                  </strong>
+                </p>
                 <p class="detail-item"><span>Category</span><strong>{{ influencer.category || '-' }}</strong></p>
                 <p class="detail-item"><span>Location</span><strong>{{ influencer.location || '-' }}</strong></p>
                 <p class="detail-item"><span>Price per post</span><strong>${{ Number(influencer.pricePerPost || 0).toLocaleString() }}</strong></p>
@@ -79,13 +101,36 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
+import { engagementMeta } from '../utils/engagement';
 
 const route = useRoute();
 const influencer = ref(null);
 const loading = ref(false);
+
+const influencerEngagementMeta = computed(() => {
+  const i = influencer.value;
+  if (!i) return engagementMeta(null);
+
+  const sampleCandidates = [i.totalVideos, i.videoCount, i.totalPosts, i.postCount];
+  let sampleCount = null;
+  for (const count of sampleCandidates) {
+    const n = Number(count);
+    if (Number.isFinite(n) && n >= 0) {
+      sampleCount = n;
+      break;
+    }
+  }
+
+  return engagementMeta(i.engagementRate, {
+    mode: 'auto',
+    sampleCount,
+    minSampleCount: 3,
+    fallback: '—'
+  });
+});
 
 onMounted(async () => {
   const id = route.params.id;
@@ -105,11 +150,6 @@ function compact(n) {
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
   if (v >= 1_000) return (v / 1_000).toFixed(1) + 'K';
   return String(v);
-}
-
-function pct(v) {
-  if (v == null || Number.isNaN(Number(v))) return '-';
-  return Number(v).toFixed(2) + '%';
 }
 
 function safeUrl(url) {

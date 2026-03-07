@@ -96,7 +96,18 @@
                   </td>
                   <td><span class="badge text-bg-danger small">{{ c.platform }}</span></td>
                   <td class="text-end">{{ compact(c.subscribers) }}</td>
-                  <td class="text-end">{{ pct(c.engagementRate) }}</td>
+                  <td class="text-end" :class="mentionEngagementMeta(c).className">
+                    <div>{{ mentionEngagementMeta(c).formatted }}</div>
+                    <span
+                      v-if="mentionEngagementMeta(c).badgeText"
+                      class="badge"
+                      :class="mentionEngagementMeta(c).badgeClass"
+                      :title="mentionEngagementMeta(c).tooltip"
+                      style="font-size:10px;"
+                    >
+                      {{ mentionEngagementMeta(c).badgeText }}
+                    </span>
+                  </td>
                   <td class="text-end fw-bold">{{ c.mentionCount }}</td>
                   <td class="text-end">{{ compact(c.estimatedViews) }}</td>
                   <td>
@@ -212,9 +223,17 @@
               <div class="card border-0 shadow-sm h-100">
                 <div class="card-body text-center py-3">
                   <div class="text-muted small mb-1">AVG ENGAGEMENT</div>
-                  <div class="fs-4 fw-bold" :class="vaEngClass(vaData.avgEngagement)">
-                    {{ vaData.avgEngagement != null ? vaData.avgEngagement.toFixed(2)+'%' : '—' }}
+                  <div class="fs-4 fw-bold" :class="videoAvgEngagementMeta.className">
+                    {{ videoAvgEngagementMeta.formatted }}
                   </div>
+                  <span
+                    v-if="videoAvgEngagementMeta.badgeText"
+                    class="badge mt-1"
+                    :class="videoAvgEngagementMeta.badgeClass"
+                    :title="videoAvgEngagementMeta.tooltip"
+                  >
+                    {{ videoAvgEngagementMeta.badgeText }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -262,8 +281,17 @@
                     <td class="text-end">{{ compact(c.subscribers) }}</td>
                     <td class="text-end fw-bold">{{ c.videoCount }}</td>
                     <td class="text-end">{{ compact(c.totalViews) }}</td>
-                    <td class="text-end" :class="vaEngClass(c.avgEngagement)">
-                      {{ c.avgEngagement != null ? c.avgEngagement.toFixed(2)+'%' : '—' }}
+                    <td class="text-end" :class="videoCreatorEngagementMeta(c).className">
+                      <div>{{ videoCreatorEngagementMeta(c).formatted }}</div>
+                      <span
+                        v-if="videoCreatorEngagementMeta(c).badgeText"
+                        class="badge"
+                        :class="videoCreatorEngagementMeta(c).badgeClass"
+                        :title="videoCreatorEngagementMeta(c).tooltip"
+                        style="font-size:10px;"
+                      >
+                        {{ videoCreatorEngagementMeta(c).badgeText }}
+                      </span>
                     </td>
                     <td class="text-muted" style="font-size:0.72rem">{{ fmtDate(c.lastDetectedAt) }}</td>
                     <td>
@@ -293,6 +321,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import api from '../services/api';
+import { formatEngagement, engagementMeta } from '../utils/engagement';
 
 const brandInput = ref('');
 const loading    = ref(false);
@@ -323,6 +352,24 @@ const filteredVaCreators = computed(() => {
   );
 });
 
+const videoAvgEngagementMeta = computed(() => {
+  return engagementMeta(vaData.value?.avgEngagement, {
+    mode: 'percent',
+    sampleCount: Number(vaData.value?.totalCreators),
+    minSampleCount: 3,
+    fallback: '—'
+  });
+});
+
+function videoCreatorEngagementMeta(creator) {
+  return engagementMeta(creator?.avgEngagement, {
+    mode: 'percent',
+    sampleCount: Number(creator?.videoCount),
+    minSampleCount: 3,
+    fallback: '—'
+  });
+}
+
 function vaEngClass(r) {
   const v = Number(r || 0);
   if (v >= 5) return 'text-success fw-bold';
@@ -335,7 +382,14 @@ function catHex(cat) { return COLORS[(cat||'').toLowerCase()]||'#6b7280'; }
 function catCss(cat) { const c=catHex(cat); return `background:${c}18;color:${c};border-color:${c}40`; }
 function letter(n) { return (n||'?').trim().charAt(0).toUpperCase(); }
 function compact(n) { const v=Number(n||0); if(v>=1e9) return (v/1e9).toFixed(1)+'B'; if(v>=1e6) return (v/1e6).toFixed(1)+'M'; if(v>=1e3) return (v/1e3).toFixed(1)+'K'; return String(v); }
-function pct(n)  { return n!=null?(Number(n)*100).toFixed(2)+'%':'—'; }
+function mentionEngagementMeta(creator) {
+  return engagementMeta(creator?.engagementRate, {
+    mode: 'ratio',
+    sampleCount: Number(creator?.mentionCount),
+    minSampleCount: 3,
+    fallback: '—'
+  });
+}
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString() : '—'; }
 function confClass(c) { if(c>=0.9) return 'text-success fw-bold'; if(c>=0.7) return 'text-warning'; return 'text-secondary'; }
 

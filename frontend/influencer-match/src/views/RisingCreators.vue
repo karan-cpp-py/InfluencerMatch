@@ -80,7 +80,16 @@
       </div>
       <div class="col-md-3">
         <div class="card border-0 shadow-sm text-center py-3">
-          <div class="fs-3 fw-bold text-warning">{{ (avgEngagement * 100).toFixed(2) }}%</div>
+          <div class="fs-3 fw-bold text-warning">{{ avgEngagementInfo.formatted }}</div>
+          <span
+            v-if="avgEngagementInfo.badgeText"
+            class="badge mt-1"
+            :class="avgEngagementInfo.badgeClass"
+            :title="avgEngagementInfo.tooltip"
+            style="font-size:10px;"
+          >
+            {{ avgEngagementInfo.badgeText }}
+          </span>
           <div class="small text-muted">Avg Engagement</div>
         </div>
       </div>
@@ -146,7 +155,18 @@
                   {{ c.subscriberDelta >= 0 ? '+' : '' }}{{ compact(c.subscriberDelta) }}
                 </span>
               </td>
-              <td>{{ (c.engagementRate * 100).toFixed(2) }}%</td>
+              <td>
+                <div>{{ creatorEngagementMeta(c).formatted }}</div>
+                <span
+                  v-if="creatorEngagementMeta(c).badgeText"
+                  class="badge"
+                  :class="creatorEngagementMeta(c).badgeClass"
+                  :title="creatorEngagementMeta(c).tooltip"
+                  style="font-size:10px;"
+                >
+                  {{ creatorEngagementMeta(c).badgeText }}
+                </span>
+              </td>
               <td>
                 <span class="badge" :class="categoryBadgeClass(c.growthCategory)">
                   {{ c.growthCategory }}
@@ -174,6 +194,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
+import { engagementMeta } from '../utils/engagement'
 
 const creators = ref([])
 const loading  = ref(false)
@@ -221,6 +242,21 @@ const risingCount   = computed(() => creators.value.filter(c => c.growthCategory
 const avgGrowth     = computed(() => creators.value.length ? creators.value.reduce((s, c) => s + c.growthRate, 0) / creators.value.length : 0)
 const totalDelta    = computed(() => creators.value.reduce((s, c) => s + (c.subscriberDelta || 0), 0))
 const avgEngagement = computed(() => creators.value.length ? creators.value.reduce((s, c) => s + c.engagementRate, 0) / creators.value.length : 0)
+const avgEngagementInfo = computed(() => engagementMeta(avgEngagement.value, {
+  mode: 'ratio',
+  sampleCount: creators.value.length,
+  minSampleCount: 3,
+  fallback: '—'
+}))
+
+function creatorEngagementMeta(creator) {
+  return engagementMeta(creator?.engagementRate, {
+    mode: 'ratio',
+    sampleCount: creator?.videoCount,
+    minSampleCount: 3,
+    fallback: '—'
+  })
+}
 
 async function fetchRising() {
   loading.value = true

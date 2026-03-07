@@ -20,7 +20,15 @@
         <div class="col-6 col-md-3">
           <article class="metric-card">
             <p class="metric-label">Engagement</p>
-            <p class="metric-value">{{ pct(influencer.engagementRate) }}</p>
+            <p class="metric-value">{{ influencerEngagementMeta.formatted }}</p>
+            <span
+              v-if="influencerEngagementMeta.badgeText"
+              class="badge mt-1"
+              :class="influencerEngagementMeta.badgeClass"
+              :title="influencerEngagementMeta.tooltip"
+            >
+              {{ influencerEngagementMeta.badgeText }}
+            </span>
           </article>
         </div>
         <div class="col-6 col-md-3">
@@ -88,6 +96,7 @@
 import { ref, onMounted, computed } from 'vue';
 import api from '../services/api';
 import { parseJwt } from '../services/jwt';
+import { engagementMeta } from '../utils/engagement';
 
 const influencer = ref({
   instagramLink: '',
@@ -107,6 +116,13 @@ const userName = computed(() => {
   const p = parseJwt(token);
   return p.unique_name || p.name || '';
 });
+
+const influencerEngagementMeta = computed(() => engagementMeta(influencer.value?.engagementRate, {
+  mode: 'auto',
+  sampleCount: influencer.value?.videoCount,
+  minSampleCount: 3,
+  fallback: '—'
+}));
 
 onMounted(async () => {
   const token = localStorage.getItem('token');
@@ -146,12 +162,6 @@ function compact(n) {
   return String(v);
 }
 
-function pct(v) {
-  if (v == null || Number.isNaN(Number(v))) return '-';
-  const n = Number(v);
-  const percent = n <= 1 ? n * 100 : n;
-  return percent.toFixed(2) + '%';
-}
 </script>
 
 <style scoped>

@@ -84,7 +84,18 @@
                 <router-link v-else :to="`/creator/${r.sourceId || r.influencerId}/analytics`">{{ r.name }}</router-link>
               </td>
               <td>{{ r.followers }}</td>
-              <td>{{ r.engagementRate }}</td>
+              <td>
+                <div>{{ resultEngagementMeta(r).formatted }}</div>
+                <span
+                  v-if="resultEngagementMeta(r).badgeText"
+                  class="badge"
+                  :class="resultEngagementMeta(r).badgeClass"
+                  :title="resultEngagementMeta(r).tooltip"
+                  style="font-size:10px;"
+                >
+                  {{ resultEngagementMeta(r).badgeText }}
+                </span>
+              </td>
               <td>{{ r.pricePerPost }}</td>
               <td>{{ Number(r.score || 0).toFixed(2) }}</td>
               <td>
@@ -118,6 +129,7 @@ import { useRoute } from 'vue-router';
 import api from '../services/api';
 import AppBarChart from '../components/charts/AppBarChart.vue';
 import AppDoughnutChart from '../components/charts/AppDoughnutChart.vue';
+import { engagementMeta } from '../utils/engagement';
 
 const route = useRoute();
 const results = ref([]);
@@ -201,6 +213,13 @@ const doughnutOptions = {
     },
   },
 };
+
+function resultEngagementMeta(item) {
+  return engagementMeta(item?.engagementRate, {
+    mode: 'auto',
+    fallback: '—'
+  });
+}
 
 async function loadMatches() {
   loading.value = true;

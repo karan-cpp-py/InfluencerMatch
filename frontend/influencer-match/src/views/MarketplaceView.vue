@@ -204,7 +204,16 @@
                   <div class="text-muted" style="font-size:10px;">Subscribers</div>
                 </div>
                 <div class="col-4">
-                  <div class="fw-bold text-success small">{{ c.engagementRate?.toFixed(2) }}%</div>
+                  <div class="fw-bold text-success small">{{ creatorEngagementMeta(c).formatted }}</div>
+                  <span
+                    v-if="creatorEngagementMeta(c).badgeText"
+                    class="badge mt-1"
+                    :class="creatorEngagementMeta(c).badgeClass"
+                    :title="creatorEngagementMeta(c).tooltip"
+                    style="font-size:9px;"
+                  >
+                    {{ creatorEngagementMeta(c).badgeText }}
+                  </span>
                   <div class="text-muted" style="font-size:10px;">Engagement</div>
                 </div>
                 <div class="col-4">
@@ -271,7 +280,16 @@
             </div>
             <div class="col-4">
               <div class="card border-0 bg-light text-center py-2">
-                <div class="fw-bold text-success">{{ detail.engagementRate?.toFixed(2) }}%</div>
+                <div class="fw-bold text-success">{{ detailEngagementMeta.formatted }}</div>
+                <span
+                  v-if="detailEngagementMeta.badgeText"
+                  class="badge mt-1"
+                  :class="detailEngagementMeta.badgeClass"
+                  :title="detailEngagementMeta.tooltip"
+                  style="font-size:10px;"
+                >
+                  {{ detailEngagementMeta.badgeText }}
+                </span>
                 <div class="text-muted" style="font-size:11px;">Engagement</div>
               </div>
             </div>
@@ -354,6 +372,7 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../services/api';
 import { trackFunnelEvent } from '../services/funnel';
 import { authRole } from '../services/auth';
+import { engagementMeta } from '../utils/engagement';
 
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -395,6 +414,11 @@ const visiblePages = computed(() => {
   const pages = [];
   for (let p = Math.max(1, cur - 2); p <= Math.min(total, cur + 2); p++) pages.push(p);
   return pages;
+});
+
+const detailEngagementMeta = computed(() => {
+  if (!detail.value) return engagementMeta(null);
+  return creatorEngagementMeta(detail.value);
 });
 
 onMounted(async () => {
@@ -566,6 +590,32 @@ async function completeWorkflow() {
 
 function fmtDateTime(d) {
   return new Date(d).toLocaleString();
+}
+
+function extractSampleCount(creator) {
+  const candidates = [
+    creator?.totalVideos,
+    creator?.videoCount,
+    creator?.recentVideosCount,
+    Array.isArray(creator?.recentVideos) ? creator.recentVideos.length : null
+  ];
+
+  for (const count of candidates) {
+    const n = Number(count);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+
+  return null;
+}
+
+function creatorEngagementMeta(creator) {
+  return engagementMeta(creator?.engagementRate, {
+    mode: 'auto',
+    decimals: 2,
+    sampleCount: extractSampleCount(creator),
+    minSampleCount: 3,
+    fallback: '—'
+  });
 }
 
 function fmtNum(n) {

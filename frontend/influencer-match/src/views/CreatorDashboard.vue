@@ -41,7 +41,15 @@
           <div class="col-6 col-md-3">
             <article class="metric-card">
               <p class="metric-label">Engagement</p>
-              <p class="metric-value text-warning">{{ fmtEngagement(channel.engagementRate, recentVideos) }}</p>
+              <p class="metric-value text-warning">{{ creatorEngagement.formatted }}</p>
+              <span
+                v-if="creatorEngagement.badgeText"
+                class="badge mt-1"
+                :class="creatorEngagement.badgeClass"
+                :title="creatorEngagement.tooltip"
+              >
+                {{ creatorEngagement.badgeText }}
+              </span>
             </article>
           </div>
           <div class="col-6 col-md-3">
@@ -271,6 +279,7 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../services/api';
 import { authUserName } from '../services/auth';
 import { trackFunnelEvent } from '../services/funnel';
+import { engagementMeta } from '../utils/engagement';
 
 const userName = computed(() => authUserName.value);
 
@@ -313,6 +322,36 @@ const profileStrength = computed(() => {
   ];
   const filled = values.filter((v) => String(v || '').trim().length > 0).length;
   return Math.round((filled / values.length) * 100);
+});
+
+const creatorEngagement = computed(() => {
+  const raw = Number(channel.value?.engagementRate);
+  const rawIsUsable = Number.isFinite(raw) && raw > 0;
+
+  if (rawIsUsable) {
+    return engagementMeta(raw, { mode: 'auto', decimals: 2 });
+  }
+
+  const withViews = (recentVideos.value || []).filter(v => Number(v?.viewCount) > 0);
+  if (!withViews.length) {
+    return engagementMeta(null, { fallback: '—' });
+  }
+
+  const avgRatio = withViews.reduce((sum, v) => {
+    const views = Number(v.viewCount || 0);
+    const likes = Number(v.likeCount || 0);
+    const comments = Number(v.commentCount || 0);
+    return sum + ((likes + comments) / views);
+  }, 0) / withViews.length;
+
+  return engagementMeta(avgRatio, {
+    mode: 'auto',
+    decimals: 2,
+    estimated: true,
+    sampleCount: withViews.length,
+    minSampleCount: 3,
+    fallback: '—'
+  });
 });
 
 onMounted(async () => {
@@ -474,29 +513,6 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function fmtEngagement(raw, videos) {
-  let value = Number(raw);
-
-  // Fallback: estimate from recent videos when channel-level engagement is missing.
-  if ((!Number.isFinite(value) || value <= 0) && Array.isArray(videos) && videos.length) {
-    const withViews = videos.filter(v => Number(v?.viewCount) > 0);
-    if (withViews.length) {
-      const avgRatio = withViews.reduce((sum, v) => {
-        const views = Number(v.viewCount || 0);
-        const likes = Number(v.likeCount || 0);
-        const comments = Number(v.commentCount || 0);
-        return sum + ((likes + comments) / views);
-      }, 0) / withViews.length;
-      value = avgRatio;
-    }
-  }
-
-  if (!Number.isFinite(value) || value < 0) return '—';
-
-  // Dashboard should always render percentage points.
-  const percent = value <= 1 ? value * 100 : value;
-  return `${percent.toFixed(2)}%`;
-}
 </script>
 
 <style scoped>

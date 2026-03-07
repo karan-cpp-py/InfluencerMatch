@@ -71,7 +71,16 @@
                   </div>
                   <div class="stat-cell">
                     <div class="stat-label">Engagement</div>
-                    <div class="stat-value">{{ pct(inf.engagementRate) }}</div>
+                    <div class="stat-value">{{ influencerEngagementMeta(inf).formatted }}</div>
+                    <span
+                      v-if="influencerEngagementMeta(inf).badgeText"
+                      class="badge mt-1"
+                      :class="influencerEngagementMeta(inf).badgeClass"
+                      :title="influencerEngagementMeta(inf).tooltip"
+                      style="font-size:10px;"
+                    >
+                      {{ influencerEngagementMeta(inf).badgeText }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -86,6 +95,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import api from '../services/api';
+import { engagementMeta } from '../utils/engagement';
 
 const influencers = ref([]);
 const loading = ref(false);
@@ -137,9 +147,13 @@ function compact(n) {
   return String(v);
 }
 
-function pct(v) {
-  if (v == null || Number.isNaN(Number(v))) return '-';
-  return Number(v).toFixed(2) + '%';
+function influencerEngagementMeta(influencer) {
+  return engagementMeta(influencer?.engagementRate, {
+    mode: 'auto',
+    sampleCount: influencer?.videoCount,
+    minSampleCount: 3,
+    fallback: '—'
+  });
 }
 
 function resetFilters() {

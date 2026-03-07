@@ -187,7 +187,16 @@
                     </div>
                     <div class="col-4">
                       <div class="text-muted" style="font-size:0.65rem">ENG. RATE</div>
-                      <div class="fw-semibold small" :class="engClass(c.engagementRate)">{{ pct(c.engagementRate) }}</div>
+                      <div class="fw-semibold small" :class="creatorEngagementMeta(c).className">{{ creatorEngagementMeta(c).formatted }}</div>
+                      <span
+                        v-if="creatorEngagementMeta(c).badgeText"
+                        class="badge mt-1"
+                        :class="creatorEngagementMeta(c).badgeClass"
+                        :title="creatorEngagementMeta(c).tooltip"
+                        style="font-size:10px;"
+                      >
+                        {{ creatorEngagementMeta(c).badgeText }}
+                      </span>
                     </div>
                   </div>
 
@@ -239,7 +248,18 @@
                     <td><span class="badge text-bg-danger" style="font-size:0.7rem">{{ c.platform }}</span> <span v-if="c.country" :title="c.country">{{ countryFlag(c.country) }}</span><span v-if="c.language" class="badge text-bg-info ms-1" style="font-size:0.65rem">{{ c.language }}</span><span v-if="c.creatorTier" class="badge border ms-1" :style="tierColor(c.creatorTier)" style="font-size:0.65rem">{{ c.creatorTier }}</span></td>
                     <td class="text-end fw-semibold">{{ compact(c.subscribers) }}</td>
                     <td class="text-end text-muted">{{ compact(c.totalViews) }}</td>
-                    <td class="text-end fw-semibold" :class="engClass(c.engagementRate)">{{ pct(c.engagementRate) }}</td>
+                    <td class="text-end fw-semibold" :class="creatorEngagementMeta(c).className">
+                      <div>{{ creatorEngagementMeta(c).formatted }}</div>
+                      <span
+                        v-if="creatorEngagementMeta(c).badgeText"
+                        class="badge"
+                        :class="creatorEngagementMeta(c).badgeClass"
+                        :title="creatorEngagementMeta(c).tooltip"
+                        style="font-size:10px;"
+                      >
+                        {{ creatorEngagementMeta(c).badgeText }}
+                      </span>
+                    </td>
                     <td class="text-end text-muted">{{ compact(c.videoCount) }}</td>
                     <td class="pe-3">
                       <div class="d-flex gap-1 justify-content-end">
@@ -277,6 +297,7 @@
 import { ref, computed, onMounted } from 'vue';
 import api from '../services/api';
 import { trackFunnelEvent } from '../services/funnel';
+import { engagementMeta } from '../utils/engagement';
 
 const creators   = ref([]);
 const categories = ref([]);
@@ -356,12 +377,13 @@ function compact(n) {
   if (v>=1e3) return (v/1e3).toFixed(1)+'K';
   return String(v);
 }
-function pct(n) { return n != null ? (Number(n)*100).toFixed(2)+'%' : '—'; }
-function engClass(r) {
-  const v = Number(r||0);
-  if (v >= 0.05) return 'text-success fw-bold';
-  if (v >= 0.02) return 'text-warning';
-  return 'text-danger';
+function creatorEngagementMeta(creator) {
+  return engagementMeta(creator?.engagementRate, {
+    mode: 'ratio',
+    sampleCount: creator?.videoCount,
+    minSampleCount: 3,
+    fallback: '—'
+  });
 }
 function countryFlag(code) {
   if (!code) return '';

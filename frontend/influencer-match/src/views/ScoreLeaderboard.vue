@@ -89,7 +89,16 @@
                     <div>
                       <div class="fw-semibold" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.channelName }}</div>
                       <div class="text-muted" style="font-size:0.7rem">
-                        {{ item.platform }} · {{ compact(item.subscribers) }} subs · {{ pct(item.engagementRate) }} eng
+                        {{ item.platform }} · {{ compact(item.subscribers) }} subs · {{ engagementMetaFor(item).formatted }} eng
+                        <span
+                          v-if="engagementMetaFor(item).badgeText"
+                          class="badge ms-1"
+                          :class="engagementMetaFor(item).badgeClass"
+                          :title="engagementMetaFor(item).tooltip"
+                          style="font-size:10px;"
+                        >
+                          {{ engagementMetaFor(item).badgeText }}
+                        </span>
                         <span v-if="item.country" class="ms-1">· {{ countryFlag(item.country) }}</span>
                       </div>
                     </div>
@@ -165,6 +174,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
+import { engagementMeta } from '../utils/engagement';
 
 const items      = ref([]);
 const categories = ref([]);
@@ -183,7 +193,15 @@ function catColor(cat) { const c=COLORS[(cat||'').toLowerCase()]||'#6b7280'; ret
 function avatarStyle(cat) { const c=COLORS[(cat||'').toLowerCase()]||'#6b7280'; return `background:${c}`; }
 function letter(n) { return (n||'?').trim().charAt(0).toUpperCase(); }
 function compact(n) { const v=Number(n||0); if(v>=1e9) return (v/1e9).toFixed(1)+'B'; if(v>=1e6) return (v/1e6).toFixed(1)+'M'; if(v>=1e3) return (v/1e3).toFixed(1)+'K'; return String(v); }
-function pct(n) { return n!=null?(Number(n)*100).toFixed(1)+'%':'—'; }
+function engagementMetaFor(item) {
+  return engagementMeta(item?.engagementRate, {
+    mode: 'ratio',
+    decimals: 1,
+    sampleCount: item?.videoCount,
+    minSampleCount: 3,
+    fallback: '—'
+  });
+}
 function fmtNum(n) { return Number(n||0).toLocaleString(); }
 function barPct(component, maxWeight) { return Math.min((component / maxWeight) * 100, 100).toFixed(1); }
 function scoreClass(s) { if(s>=60) return 'text-success'; if(s>=30) return 'text-warning'; return 'text-danger'; }

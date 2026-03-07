@@ -128,6 +128,15 @@
                 <div class="fw-semibold" :class="winnerClass(metric.key, 'creator1')">
                   {{ metric.fmt(result.creator1[metric.key]) }}
                 </div>
+                <span
+                  v-if="metric.key === 'engagementRate' && engagementBadge(metric.key, 'creator1').badgeText"
+                  class="badge"
+                  :class="engagementBadge(metric.key, 'creator1').badgeClass"
+                  :title="engagementBadge(metric.key, 'creator1').tooltip"
+                  style="font-size:10px;"
+                >
+                  {{ engagementBadge(metric.key, 'creator1').badgeText }}
+                </span>
                 <div v-if="isWinner(metric.key, 'creator1')" class="text-primary" style="font-size:0.68rem">▲ higher</div>
               </div>
               <!-- Label + bar -->
@@ -149,6 +158,15 @@
                 <div class="fw-semibold" :class="winnerClass(metric.key, 'creator2')">
                   {{ metric.fmt(result.creator2[metric.key]) }}
                 </div>
+                <span
+                  v-if="metric.key === 'engagementRate' && engagementBadge(metric.key, 'creator2').badgeText"
+                  class="badge"
+                  :class="engagementBadge(metric.key, 'creator2').badgeClass"
+                  :title="engagementBadge(metric.key, 'creator2').tooltip"
+                  style="font-size:10px;"
+                >
+                  {{ engagementBadge(metric.key, 'creator2').badgeText }}
+                </span>
                 <div v-if="isWinner(metric.key, 'creator2')" class="text-warning" style="font-size:0.68rem">▲ higher</div>
               </div>
             </div>
@@ -178,6 +196,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
+import { engagementMeta } from '../utils/engagement';
 
 const q1 = ref('');
 const q2 = ref('');
@@ -198,16 +217,26 @@ function catHex(cat) { return COLORS[(cat||'').toLowerCase()]||'#6b7280'; }
 function catCss(cat) { const c=catHex(cat); return `background:${c}18;color:${c};border-color:${c}40`; }
 function letter(n) { return (n||'?').trim().charAt(0).toUpperCase(); }
 function compact(n) { const v=Number(n||0); if(v>=1e9) return (v/1e9).toFixed(1)+'B'; if(v>=1e6) return (v/1e6).toFixed(1)+'M'; if(v>=1e3) return (v/1e3).toFixed(1)+'K'; return String(v); }
-function pct(n) { return n!=null?(Number(n)*100).toFixed(2)+'%':'—'; }
+function engagementMetaForValue(value) {
+  return engagementMeta(value, {
+    mode: 'ratio',
+    fallback: '—'
+  });
+}
 function scoreClass(s) { if(s>=60) return 'text-success'; if(s>=30) return 'text-warning'; return 'text-danger'; }
 
 const metrics = [
   { key: 'subscribers',     label: 'Subscribers',      fmt: compact },
   { key: 'averageViews',    label: 'Avg Views',         fmt: compact },
-  { key: 'engagementRate',  label: 'Engagement Rate',   fmt: pct     },
+  { key: 'engagementRate',  label: 'Engagement Rate',   fmt: v => engagementMetaForValue(v).formatted },
   { key: 'uploadFrequency', label: 'Videos / Week',     fmt: v => Number(v??0).toFixed(2) },
   { key: 'creatorScore',    label: 'Creator Score',     fmt: v => v!=null ? Number(v).toFixed(1) : '—' },
 ];
+
+function engagementBadge(key, side) {
+  if (key !== 'engagementRate' || !result.value) return engagementMetaForValue(null);
+  return engagementMetaForValue(result.value[side]?.engagementRate);
+}
 
 function getVal(key, side) { return Number(result.value[side][key] ?? 0); }
 function isWinner(key, side) {
