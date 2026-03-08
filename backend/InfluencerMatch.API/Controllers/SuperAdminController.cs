@@ -80,7 +80,10 @@ namespace InfluencerMatch.API.Controllers
             _videoAnalytics    = videoAnalytics;
             _notifications     = notifications;
             _httpClientFactory = httpClientFactory;
-            _apiKey            = config["YouTube:ApiKey"];
+            _apiKey =
+                config["YouTube:ApiKey"]
+                ?? config["YouTube__ApiKey"]
+                ?? config["YOUTUBE_API_KEY"];
         }
 
         // ── Bootstrap ─────────────────────────────────────────────────────────

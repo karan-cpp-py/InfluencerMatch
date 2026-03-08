@@ -16,6 +16,8 @@ services:
         sync: false
       - key: YouTube__ApiKey
         sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
       - key: PaymentProviders__Stripe__ApiKey
         sync: false
       - key: PaymentProviders__Stripe__Secret

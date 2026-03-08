@@ -85,7 +85,10 @@ namespace InfluencerMatch.Infrastructure.Services
             _http   = http;
             _quota  = quota;
             _logger = logger;
-            _apiKey = config["YouTube:ApiKey"];
+            _apiKey =
+                config["YouTube:ApiKey"]
+                ?? config["YouTube__ApiKey"]
+                ?? config["YOUTUBE_API_KEY"];
         }
 
         // ── Public API ───────────────────────────────────────────────────────
@@ -94,7 +97,7 @@ namespace InfluencerMatch.Infrastructure.Services
             int creatorProfileId, string channelUrl, CancellationToken ct = default)
         {
             if (!IsApiKeyConfigured())
-                throw new InvalidOperationException("YouTube API key is not configured.");
+                throw new InvalidOperationException("YouTube API key is not configured. Set YouTube__ApiKey (or YOUTUBE_API_KEY) in environment variables.");
 
             // 1. Parse URL → channel ID
             var channelId = await ResolveChannelIdAsync(channelUrl, ct);

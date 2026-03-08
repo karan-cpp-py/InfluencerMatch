@@ -56,7 +56,10 @@ namespace InfluencerMatch.Infrastructure.Services
             _db          = db;
             _httpFactory = httpFactory;
             _logger      = logger;
-            _apiKey      = config["YouTube:ApiKey"];
+            _apiKey =
+                config["YouTube:ApiKey"]
+                ?? config["YouTube__ApiKey"]
+                ?? config["YOUTUBE_API_KEY"];
         }
 
         // ────────────────────────────────────────────────────────────────────
