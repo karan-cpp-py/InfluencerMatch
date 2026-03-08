@@ -144,7 +144,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 CreatorAnalytics? analytics,
                 List<CreatorGrowth> growthPoints)
         {
-            double engagementRate = analytics?.EngagementRate ?? 0;
+            double engagementRate = EngagementRateEstimator.EstimateOrStored(
+                analytics?.EngagementRate,
+                creator.Subscribers,
+                creator.TotalViews,
+                creator.VideoCount,
+                analytics?.AvgViews);
             double avgViews       = analytics?.AvgViews
                                     ?? (creator.VideoCount > 0
                                         ? creator.TotalViews / (double)creator.VideoCount
@@ -247,7 +252,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 Category        = c.Category     ?? string.Empty,
                 Subscribers     = c.Subscribers,
                 AverageViews    = Math.Round(avgViews),
-                EngagementRate  = a?.EngagementRate ?? 0,
+                EngagementRate  = EngagementRateEstimator.EstimateOrStored(
+                    a?.EngagementRate,
+                    c.Subscribers,
+                    c.TotalViews,
+                    c.VideoCount,
+                    avgViews),
                 UploadFrequency = Math.Round(freq, 2),
                 CreatorScore    = s?.Score,
                 ScoreBreakdown  = breakdown

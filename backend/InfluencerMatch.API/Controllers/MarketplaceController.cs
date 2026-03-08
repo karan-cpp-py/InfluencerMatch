@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using InfluencerMatch.API.Services;
 using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
+using InfluencerMatch.Infrastructure.Services;
 using InfluencerMatch.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -106,6 +107,10 @@ namespace InfluencerMatch.API.Controllers
                 .Select(c => (int?)c.CreatorId)
                 .FirstOrDefaultAsync(ct);
 
+            var detailEngagement = row.ch.EngagementRate > 0
+                ? EngagementRateEstimator.Clamp(row.ch.EngagementRate)
+                : EstimateFromVideoRows(row.ch.Subscribers, recentVideos);
+
             return Ok(new MarketplaceCreatorDetailDto
             {
                 CreatorProfileId = row.pr.CreatorProfileId,
@@ -115,7 +120,7 @@ namespace InfluencerMatch.API.Controllers
                 ThumbnailUrl     = row.ch.ThumbnailUrl,
                 Subscribers      = row.ch.Subscribers,
                 TotalViews       = row.ch.TotalViews,
-                EngagementRate   = row.ch.EngagementRate,
+                EngagementRate   = detailEngagement,
                 CreatorTier      = row.ch.CreatorTier,
                 Language         = row.pr.Language,
                 Category         = row.pr.Category,
@@ -157,11 +162,8 @@ namespace InfluencerMatch.API.Controllers
                 q = q.Where(x => x.ch.Subscribers >= query.MinSubscribers.Value);
             if (query.MaxSubscribers.HasValue)
                 q = q.Where(x => x.ch.Subscribers <= query.MaxSubscribers.Value);
-            if (query.MinEngagement.HasValue)
-                q = q.Where(x => x.ch.EngagementRate >= query.MinEngagement.Value);
-
             var records = await q.ToListAsync();
-            return records.Select(x => new MarketplaceCreatorDto
+            var items = records.Select(x => new MarketplaceCreatorDto
             {
                 CreatorProfileId = x.pr.CreatorProfileId,
                 ChannelId        = x.ch.ChannelId,
@@ -169,7 +171,11 @@ namespace InfluencerMatch.API.Controllers
                 ThumbnailUrl     = x.ch.ThumbnailUrl,
                 Subscribers      = x.ch.Subscribers,
                 TotalViews       = x.ch.TotalViews,
-                EngagementRate   = x.ch.EngagementRate,
+                EngagementRate   = EngagementRateEstimator.EstimateOrStored(
+                    x.ch.EngagementRate,
+                    x.ch.Subscribers,
+                    x.ch.TotalViews,
+                    x.ch.VideoCount),
                 CreatorTier      = x.ch.CreatorTier,
                 Language         = x.pr.Language,
                 Category         = x.pr.Category,
@@ -177,6 +183,11 @@ namespace InfluencerMatch.API.Controllers
                 IsVerified       = x.ch.IsVerified,
                 ContactEmail     = x.pr.ContactEmail
             }).ToList();
+
+            if (query.MinEngagement.HasValue)
+                items = items.Where(x => x.EngagementRate >= query.MinEngagement.Value).ToList();
+
+            return items;
         }
 
         private async Task<List<MarketplaceCreatorDto>> BuildInfluencerQuery(
@@ -199,9 +210,6 @@ namespace InfluencerMatch.API.Controllers
                 q = q.Where(x => x.i.Followers >= query.MinSubscribers.Value);
             if (query.MaxSubscribers.HasValue)
                 q = q.Where(x => x.i.Followers <= query.MaxSubscribers.Value);
-            if (query.MinEngagement.HasValue)
-                q = q.Where(x => x.i.EngagementRate >= query.MinEngagement.Value);
-
             // Unsupported filters for legacy: Language, CreatorTier
             if (!string.IsNullOrWhiteSpace(query.Language) || !string.IsNullOrWhiteSpace(query.CreatorTier))
                 return new List<MarketplaceCreatorDto>();
@@ -215,6 +223,12 @@ namespace InfluencerMatch.API.Controllers
                     ? _legacyCache.GetSnapshot(x.i.YouTubeLink!)
                     : null;
 
+                var engagementRate = EngagementRateEstimator.EstimateOrStored(
+                    x.i.EngagementRate,
+                    live?.Subscribers ?? x.i.Followers,
+                    live?.TotalViews ?? 0,
+                    live?.VideoCount ?? 0);
+
                 return new MarketplaceCreatorDto
                 {
                     // Negative ID signals "legacy influencer" to the detail endpoint
@@ -224,7 +238,7 @@ namespace InfluencerMatch.API.Controllers
                     ThumbnailUrl     = live?.ThumbnailUrl,
                     Subscribers      = live?.Subscribers  ?? x.i.Followers,
                     TotalViews       = live?.TotalViews   ?? 0,
-                    EngagementRate   = x.i.EngagementRate,
+                    EngagementRate   = engagementRate,
                     CreatorTier      = live?.CreatorTier  ?? TierFromFollowers(x.i.Followers),
                     Language         = null,
                     Category         = x.i.Category,
@@ -232,7 +246,9 @@ namespace InfluencerMatch.API.Controllers
                     IsVerified       = false,
                     ContactEmail     = x.u.Email
                 };
-            }).ToList();
+            })
+            .Where(x => !query.MinEngagement.HasValue || x.EngagementRate >= query.MinEngagement.Value)
+            .ToList();
         }
 
         private async Task<IActionResult> GetLegacyInfluencerDetail(
@@ -267,6 +283,12 @@ namespace InfluencerMatch.API.Controllers
                     .FirstOrDefaultAsync(ct)
                 : null;
 
+            var detailEngagement = EngagementRateEstimator.EstimateOrStored(
+                row.i.EngagementRate,
+                live?.Subscribers ?? row.i.Followers,
+                live?.TotalViews ?? 0,
+                live?.VideoCount ?? 0);
+
             return Ok(new MarketplaceCreatorDetailDto
             {
                 CreatorProfileId = -row.i.InfluencerId,
@@ -276,7 +298,7 @@ namespace InfluencerMatch.API.Controllers
                 ThumbnailUrl     = live?.ThumbnailUrl,
                 Subscribers      = live?.Subscribers  ?? row.i.Followers,
                 TotalViews       = live?.TotalViews   ?? 0,
-                EngagementRate   = row.i.EngagementRate,
+                EngagementRate   = detailEngagement,
                 CreatorTier      = live?.CreatorTier  ?? TierFromFollowers(row.i.Followers),
                 Language         = null,
                 Category         = row.i.Category,
@@ -298,5 +320,25 @@ namespace InfluencerMatch.API.Controllers
             >= 10_000    => "Micro",
             _            => "Nano"
         };
+
+        private static double EstimateFromVideoRows(long subscribers, List<ChannelVideoDto> videos)
+        {
+            if (videos == null || videos.Count == 0)
+                return EngagementRateEstimator.EstimateFromAverages(subscribers, 0);
+
+            var withViews = videos.Where(v => v.ViewCount > 0).ToList();
+            if (withViews.Count == 0)
+                return EngagementRateEstimator.EstimateFromAverages(subscribers, 0);
+
+            var ratios = withViews
+                .Select(v => (v.LikeCount + v.CommentCount) / (double)v.ViewCount)
+                .Where(r => double.IsFinite(r) && r > 0)
+                .ToList();
+
+            if (ratios.Count == 0)
+                return EngagementRateEstimator.EstimateFromAverages(subscribers, withViews.Average(v => (double)v.ViewCount));
+
+            return EngagementRateEstimator.Clamp(ratios.Average());
+        }
     }
 }

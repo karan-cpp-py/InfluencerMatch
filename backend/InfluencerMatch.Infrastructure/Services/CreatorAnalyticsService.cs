@@ -80,7 +80,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 AverageViews          = analytics?.AvgViews          ?? EstimateAvgViews(creator),
                 AverageLikes          = analytics?.AvgLikes          ?? 0,
                 AverageComments       = analytics?.AvgComments       ?? 0,
-                EngagementRate        = analytics?.EngagementRate    ?? 0,
+                EngagementRate        = EngagementRateEstimator.EstimateOrStored(
+                    analytics?.EngagementRate,
+                    creator.Subscribers,
+                    creator.TotalViews,
+                    creator.VideoCount,
+                    analytics?.AvgViews),
                 AnalyticsCalculatedAt = analytics?.CalculatedAt,
                 GrowthHistory         = growthHistory,
                 TopVideos             = topVideos

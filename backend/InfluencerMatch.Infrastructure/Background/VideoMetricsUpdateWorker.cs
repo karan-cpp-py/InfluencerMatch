@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using InfluencerMatch.Application.Interfaces;
 using InfluencerMatch.Domain.Entities;
 using InfluencerMatch.Infrastructure.Data;
+using InfluencerMatch.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -157,10 +158,32 @@ namespace InfluencerMatch.Infrastructure.Background
                 .Take(20)
                 .ToListAsync(ct);
 
-            if (!recent.Any()) return;
+            if (!recent.Any())
+            {
+                ch.EngagementRate = EngagementRateEstimator.EstimateOrStored(
+                    ch.EngagementRate,
+                    ch.Subscribers,
+                    ch.TotalViews,
+                    ch.VideoCount);
+                db.CreatorChannels.Update(ch);
+                return;
+            }
 
-            var avgLikes = recent.Average(v => (double)v.LikeCount);
-            ch.EngagementRate = avgLikes / ch.Subscribers;
+            var withViews = recent.Where(v => v.ViewCount > 0).ToList();
+            if (withViews.Count == 0)
+            {
+                ch.EngagementRate = EngagementRateEstimator.EstimateOrStored(
+                    ch.EngagementRate,
+                    ch.Subscribers,
+                    ch.TotalViews,
+                    ch.VideoCount);
+            }
+            else
+            {
+                var avgEngagement = withViews
+                    .Average(v => (v.LikeCount + v.CommentCount) / (double)v.ViewCount);
+                ch.EngagementRate = EngagementRateEstimator.Clamp(avgEngagement);
+            }
             db.CreatorChannels.Update(ch);
         }
 

@@ -6,6 +6,7 @@ using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
 using InfluencerMatch.Domain.Entities;
 using InfluencerMatch.Infrastructure.Data;
+using InfluencerMatch.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace InfluencerMatch.Infrastructure.Repositories
@@ -88,27 +89,19 @@ namespace InfluencerMatch.Infrastructure.Repositories
             if (q.MaxSubscribers.HasValue)
                 query = query.Where(x => x.c.Subscribers <= q.MaxSubscribers.Value);
 
-            if (q.MinEngagement.HasValue)
-                query = query.Where(x => x.a != null && x.a.EngagementRate >= q.MinEngagement.Value);
+            var rows = await query.ToListAsync();
 
-            if (q.MaxEngagement.HasValue)
-                query = query.Where(x => x.a != null && x.a.EngagementRate <= q.MaxEngagement.Value);
-
-            query = q.SortBy?.ToLowerInvariant() switch
+            var projected = rows.Select(x =>
             {
-                "views"       => query.OrderByDescending(x => x.c.TotalViews),
-                "engagement"  => query.OrderByDescending(x => x.a != null ? x.a.EngagementRate : 0),
-                "videos"      => query.OrderByDescending(x => x.c.VideoCount),
-                "newest"      => query.OrderByDescending(x => x.c.CreatedAt),
-                _             => query.OrderByDescending(x => x.c.Subscribers)
-            };
+                var avgViews = x.a?.AvgViews ?? (x.c.VideoCount > 0 ? x.c.TotalViews / (double)x.c.VideoCount : 0);
+                var engagement = EngagementRateEstimator.EstimateOrStored(
+                    x.a?.EngagementRate,
+                    x.c.Subscribers,
+                    x.c.TotalViews,
+                    x.c.VideoCount,
+                    avgViews);
 
-            var totalCount = await query.CountAsync();
-
-            var items = await query
-                .Skip((q.Page - 1) * q.PageSize)
-                .Take(q.PageSize)
-                .Select(x => new CreatorSearchResultDto
+                var dto = new CreatorSearchResultDto
                 {
                     CreatorId               = x.c.CreatorId,
                     ChannelId               = x.c.ChannelId,
@@ -119,16 +112,45 @@ namespace InfluencerMatch.Infrastructure.Repositories
                     Subscribers             = x.c.Subscribers,
                     TotalViews              = x.c.TotalViews,
                     VideoCount              = x.c.VideoCount,
-                    EngagementRate          = x.a != null ? x.a.EngagementRate : 0,
-                    AvgViews                = x.a != null ? x.a.AvgViews       : 0,
-                    AvgLikes                = x.a != null ? x.a.AvgLikes       : 0,
+                    EngagementRate          = engagement,
+                    AvgViews                = avgViews,
+                    AvgLikes                = x.a?.AvgLikes ?? 0,
                     CreatorTier             = x.c.CreatorTier,
                     IsSmallCreator          = x.c.IsSmallCreator,
                     Language                = x.c.Language,
                     Region                  = x.c.Region,
                     LanguageConfidenceScore = x.c.LanguageConfidenceScore
-                })
-                .ToListAsync();
+                };
+
+                return new
+                {
+                    Item = dto,
+                    x.c.CreatedAt
+                };
+            });
+
+            if (q.MinEngagement.HasValue)
+                projected = projected.Where(x => x.Item.EngagementRate >= q.MinEngagement.Value);
+
+            if (q.MaxEngagement.HasValue)
+                projected = projected.Where(x => x.Item.EngagementRate <= q.MaxEngagement.Value);
+
+            projected = q.SortBy?.ToLowerInvariant() switch
+            {
+                "views"      => projected.OrderByDescending(x => x.Item.TotalViews),
+                "engagement" => projected.OrderByDescending(x => x.Item.EngagementRate),
+                "videos"     => projected.OrderByDescending(x => x.Item.VideoCount),
+                "newest"     => projected.OrderByDescending(x => x.CreatedAt),
+                _             => projected.OrderByDescending(x => x.Item.Subscribers)
+            };
+
+            var totalCount = projected.Count();
+
+            var items = projected
+                .Skip((q.Page - 1) * q.PageSize)
+                .Take(q.PageSize)
+                .Select(x => x.Item)
+                .ToList();
 
             return new PagedResultDto<CreatorSearchResultDto>
             {

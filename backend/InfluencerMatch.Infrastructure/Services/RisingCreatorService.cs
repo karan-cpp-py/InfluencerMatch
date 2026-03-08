@@ -214,7 +214,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 GrowthRate      = x.gs.GrowthRate,
                 GrowthCategory  = x.gs.GrowthCategory,
                 SubscriberDelta = x.gs.SubscriberDelta,
-                EngagementRate  = x.a?.EngagementRate ?? 0,
+                EngagementRate  = EngagementRateEstimator.EstimateOrStored(
+                    x.a?.EngagementRate,
+                    x.c.Subscribers,
+                    x.c.TotalViews,
+                    x.c.VideoCount,
+                    x.a?.AvgViews),
                 CalculatedAt    = x.gs.CalculatedAt
             }).ToList();
         }
@@ -306,7 +311,12 @@ namespace InfluencerMatch.Infrastructure.Services
                     GrowthRate      = normMap[r.creator.CreatorId],
                     GrowthCategory  = catMap[r.creator.CreatorId],
                     SubscriberDelta = r.delta,
-                    EngagementRate  = r.a?.EngagementRate ?? 0,
+                    EngagementRate  = EngagementRateEstimator.EstimateOrStored(
+                        r.a?.EngagementRate,
+                        r.creator.Subscribers,
+                        r.creator.TotalViews,
+                        r.creator.VideoCount,
+                        r.a?.AvgViews),
                     CalculatedAt    = DateTime.UtcNow
                 })
                 .Where(r => growthCategory == null || r.GrowthCategory == growthCategory)

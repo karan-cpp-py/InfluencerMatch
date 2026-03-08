@@ -67,7 +67,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 analyticsMap.TryGetValue(creator.CreatorId, out var a);
                 growthMap.TryGetValue(creator.CreatorId,    out var g);
 
-                double engRate    = a?.EngagementRate ?? 0;
+                double engRate    = EngagementRateEstimator.EstimateOrStored(
+                    a?.EngagementRate,
+                    creator.Subscribers,
+                    creator.TotalViews,
+                    creator.VideoCount,
+                    a?.AvgViews);
                 double growthRate = g?.GrowthRate     ?? 0;
                 long   subs       = creator.Subscribers;
                 double avgViews   = a?.AvgViews   ?? 0;

@@ -190,7 +190,12 @@ namespace InfluencerMatch.Infrastructure.Services
                     var creator    = g.First().Creator;
                     analyticsMap.TryGetValue(g.Key, out var a);
                     double avgViews = a?.AvgViews ?? EstimateAvgViews(creator.TotalViews, creator.VideoCount);
-                    double eng      = a?.EngagementRate ?? 0;
+                    double eng      = EngagementRateEstimator.EstimateOrStored(
+                        a?.EngagementRate,
+                        creator.Subscribers,
+                        creator.TotalViews,
+                        creator.VideoCount,
+                        avgViews);
 
                     return new BrandPromotingCreatorDto
                     {
