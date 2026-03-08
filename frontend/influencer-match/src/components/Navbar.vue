@@ -17,7 +17,12 @@
         <span class="navbar-toggler-icon"></span>
       </button>
 
-      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <div
+        ref="navCollapseRef"
+        class="collapse navbar-collapse"
+        id="navbarSupportedContent"
+        @click="handleMenuClick"
+      >
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item">
             <router-link class="nav-link" to="/">Home</router-link>
@@ -126,20 +131,57 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, nextTick, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { authToken, authRole, authUserName, clearAuth } from '../services/auth';
 import { platformConfig } from '../services/platform';
 import NotificationBell from './NotificationBell.vue';
 
 const router = useRouter();
+const route = useRoute();
 const token = computed(() => authToken.value);
 const role = computed(() => authRole.value);
 const userName = computed(() => authUserName.value);
 const customerUserRoles = ['Brand', 'Agency', 'Individual', 'CreatorManager'];
 const brandOpsRoles = ['Brand', 'Agency'];
+const navCollapseRef = ref(null);
+
+function collapseMobileMenu() {
+  if (typeof window === 'undefined' || window.innerWidth >= 992) return;
+
+  const collapseEl = navCollapseRef.value;
+  if (!collapseEl?.classList?.contains('show')) return;
+
+  collapseEl.classList.remove('show');
+
+  const toggler = document.querySelector('.navbar-toggler[aria-controls="navbarSupportedContent"]');
+  if (toggler) {
+    toggler.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function handleMenuClick(event) {
+  const target = event?.target;
+  if (!target?.closest) return;
+
+  const clickable = target.closest('a, button');
+  if (!clickable) return;
+
+  // Keep dropdown toggles functional; close only when a real navigation/action item is clicked.
+  if (clickable.classList?.contains('dropdown-toggle')) return;
+
+  collapseMobileMenu();
+}
+
+watch(
+  () => route.fullPath,
+  () => {
+    nextTick(() => collapseMobileMenu());
+  }
+);
 
 function logout() {
+  collapseMobileMenu();
   clearAuth();
   router.push('/');
 }

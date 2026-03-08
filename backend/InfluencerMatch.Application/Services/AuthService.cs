@@ -60,9 +60,86 @@ namespace InfluencerMatch.Application.Services
 
         public async Task<AuthTokenResponseDto> LoginAsync(UserLoginDto dto, string? ipAddress = null)
         {
+            var bootstrapAdminAuth = await TryBootstrapSuperAdminLoginAsync(dto, ipAddress);
+            if (bootstrapAdminAuth != null)
+            {
+                return bootstrapAdminAuth;
+            }
+
             var user = await _userRepository.GetByEmailAsync(dto.Email);
             if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
                 throw new ApplicationException("Invalid credentials");
+            return await GenerateAuthTokensAsync(user, ipAddress);
+        }
+
+        private async Task<AuthTokenResponseDto?> TryBootstrapSuperAdminLoginAsync(UserLoginDto dto, string? ipAddress)
+        {
+            var configuredEmail = _configuration["BootstrapSuperAdmin:Email"];
+            var configuredPassword = _configuration["BootstrapSuperAdmin:Password"];
+            var configuredName = _configuration["BootstrapSuperAdmin:Name"];
+
+            var adminEmail = string.IsNullOrWhiteSpace(configuredEmail)
+                ? "superadmin@influencermatch.local"
+                : configuredEmail.Trim();
+
+            var adminPassword = string.IsNullOrWhiteSpace(configuredPassword)
+                ? "SuperAdmin@123"
+                : configuredPassword;
+
+            var adminName = string.IsNullOrWhiteSpace(configuredName)
+                ? "Platform SuperAdmin"
+                : configuredName.Trim();
+
+            if (!string.Equals(dto.Email?.Trim(), adminEmail, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(dto.Password, adminPassword, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var user = await _userRepository.GetByEmailAsync(adminEmail);
+            if (user == null)
+            {
+                user = new User
+                {
+                    Name = adminName,
+                    Email = adminEmail,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+                    Role = "SuperAdmin",
+                    CustomerType = "Individual",
+                    Country = "Unknown",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _userRepository.AddAsync(user);
+            }
+            else
+            {
+                var needsUpdate = false;
+
+                if (!string.Equals(user.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                {
+                    user.Role = "SuperAdmin";
+                    needsUpdate = true;
+                }
+
+                if (!BCrypt.Net.BCrypt.Verify(adminPassword, user.PasswordHash))
+                {
+                    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword);
+                    needsUpdate = true;
+                }
+
+                if (string.IsNullOrWhiteSpace(user.Name))
+                {
+                    user.Name = adminName;
+                    needsUpdate = true;
+                }
+
+                if (needsUpdate)
+                {
+                    await _userRepository.UpdateAsync(user);
+                }
+            }
+
             return await GenerateAuthTokensAsync(user, ipAddress);
         }
 
