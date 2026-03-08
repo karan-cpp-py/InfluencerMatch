@@ -64,6 +64,30 @@ VITE_API_URL=https://localhost:60587/api
 - Adjust ports or URLs via environment variables as needed.
 - A production deployment would require proper CORS, HTTPS certificates, and secure secrets.
 
+## Free Deployment (Testing)
+
+### Backend on Render
+1. Push this repository to GitHub.
+2. In Render, create a new **Web Service** from this repo.
+3. Render can auto-detect `render.yaml` at repo root.
+4. Set these required environment variables in Render:
+   - `ConnectionStrings__DefaultConnection`
+   - `JwtSettings__Secret`
+   - `Cors__AllowedOrigins` set to your Vercel frontend URL (example: `https://your-app.vercel.app`)
+5. Deploy and confirm health endpoint:
+   - `https://<your-render-service>.onrender.com/health`
+
+### Frontend on Vercel
+1. Create a new Vercel project from this same repo.
+2. Set **Root Directory** to: `frontend/influencer-match`
+3. Set environment variable in Vercel:
+   - `VITE_API_URL=https://<your-render-service>.onrender.com/api`
+4. Deploy.
+
+### Important
+- Keep secrets only in Render/Vercel environment variables, not in committed files.
+- Free Render instances can sleep; first request after idle can be slow.
+
 ## Docs
 - SMTP email setup for lifecycle notifications: `docs/email-setup.md`
 

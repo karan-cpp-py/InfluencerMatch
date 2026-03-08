@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.RateLimiting;
 using InfluencerMatch.API.Configuration;
@@ -81,11 +83,36 @@ builder.Services.AddScoped<IVideoAnalyticsService,      InfluencerMatch.Infrastr
 // CORS
 builder.Services.AddCors(options =>
 {
+    var allowedOrigins = new List<string>();
+
+    var configuredOrigins = builder.Configuration["Cors:AllowedOrigins"];
+    if (!string.IsNullOrWhiteSpace(configuredOrigins))
+    {
+        allowedOrigins.AddRange(
+            configuredOrigins
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        );
+    }
+
+    var frontendBaseUrl = builder.Configuration["App:FrontendBaseUrl"];
+    if (!string.IsNullOrWhiteSpace(frontendBaseUrl))
+    {
+        allowedOrigins.Add(frontendBaseUrl);
+    }
+
+    // Local development defaults.
+    allowedOrigins.Add("http://localhost:3000");
+    allowedOrigins.Add("http://localhost:5173");
+
+    allowedOrigins = allowedOrigins
+        .Where(o => !string.IsNullOrWhiteSpace(o))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
     options.AddPolicy("AllowVueApp", policy =>
         policy.AllowAnyHeader()
               .AllowAnyMethod()
-              // allow both common Vite ports or read from config
-              .WithOrigins("http://localhost:3000", "http://localhost:5173")
+              .WithOrigins(allowedOrigins.ToArray())
               .AllowCredentials());
 });
 
@@ -231,5 +258,12 @@ app.MapHealthChecks("/readiness", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
 });
+
+// Render/other PaaS expose the listen port via PORT.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    app.Urls.Add($"http://0.0.0.0:{port}");
+}
 
 app.Run();

@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: influencermatch-api
+    runtime: dotnet
+    rootDir: backend/InfluencerMatch.API
+    buildCommand: dotnet restore && dotnet publish -c Release -o out
+    startCommand: dotnet out/InfluencerMatch.API.dll
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Cors__AllowedOrigins
+        sync: false
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: JwtSettings__Secret
+        sync: false
+      - key: YouTube__ApiKey
+        sync: false
+      - key: PaymentProviders__Stripe__ApiKey
+        sync: false
+      - key: PaymentProviders__Stripe__Secret
+        sync: false
+      - key: PaymentProviders__Stripe__WebhookSecret
+        sync: false
+      - key: PaymentProviders__Razorpay__ApiKey
+        sync: false
+      - key: PaymentProviders__Razorpay__Secret
+        sync: false
+      - key: PaymentProviders__Razorpay__WebhookSecret
+        sync: false
+      - key: PaymentProviders__PayPal__ApiKey
+        sync: false
+      - key: PaymentProviders__PayPal__Secret
+        sync: false
+      - key: PaymentProviders__PayPal__WebhookSecret
+        sync: false
+      - key: PaymentProviders__PayPal__WebhookId
+        sync: false

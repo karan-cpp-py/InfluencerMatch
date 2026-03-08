@@ -2,8 +2,9 @@ import axios from 'axios';
 import { clearAuth, normalizeAuthPayload, setAuth } from './auth';
 
 // Vite uses import.meta.env for env variables; prefix custom vars with VITE_
+const defaultLocalApi = 'http://localhost:60587/api';
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://localhost:60587/api',
+  baseURL: import.meta.env.VITE_API_URL || defaultLocalApi,
 });
 
 api.interceptors.request.use(config => {
