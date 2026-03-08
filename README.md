@@ -70,11 +70,12 @@ VITE_API_URL=https://localhost:60587/api
 1. Push this repository to GitHub.
 2. In Render, create a new **Web Service** from this repo.
 3. Render can auto-detect `render.yaml` at repo root.
-4. Set these required environment variables in Render:
+4. If your Render UI does not show native .NET runtime, keep the Docker runtime from `render.yaml` (already configured in this repo).
+5. Set these required environment variables in Render:
    - `ConnectionStrings__DefaultConnection`
    - `JwtSettings__Secret`
    - `Cors__AllowedOrigins` set to your Vercel frontend URL (example: `https://your-app.vercel.app`)
-5. Deploy and confirm health endpoint:
+6. Deploy and confirm health endpoint:
    - `https://<your-render-service>.onrender.com/health`
 
 ### Frontend on Vercel
