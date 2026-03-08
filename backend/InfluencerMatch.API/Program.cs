@@ -226,9 +226,8 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
 app.UseMiddleware<CorrelationLoggingMiddleware>();
 
 app.UseCors("AllowVueApp");
@@ -258,6 +257,10 @@ app.MapHealthChecks("/readiness", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready")
 });
+
+// Render and other platforms frequently probe these paths for liveness.
+app.MapGet("/", () => Results.Ok(new { status = "ok", service = "InfluencerMatch.API" }));
+app.MapGet("/heartbeat", () => Results.Ok(new { status = "ok" }));
 
 // Render/other PaaS expose the listen port via PORT.
 var port = Environment.GetEnvironmentVariable("PORT");
