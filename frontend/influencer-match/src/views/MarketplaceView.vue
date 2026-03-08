@@ -18,6 +18,14 @@
     <!-- Filters -->
     <div class="card border-0 shadow-sm mb-3 sticky-top filter-dock">
       <div class="card-body p-3">
+        <div class="d-flex d-lg-none justify-content-between align-items-center mb-2">
+          <span class="small fw-semibold text-muted">Filters</span>
+          <button class="btn btn-outline-primary btn-sm" @click="mobileFiltersOpen = !mobileFiltersOpen">
+            {{ mobileFiltersOpen ? 'Hide Filters' : 'Show Filters' }}
+          </button>
+        </div>
+
+        <div class="filter-panel" :class="{ open: mobileFiltersOpen }">
         <div class="row g-2 align-items-end">
           <div class="col-md-3">
             <label class="form-label small fw-semibold mb-1">Search</label>
@@ -57,6 +65,7 @@
             <button class="btn btn-primary btn-sm w-100" @click="search(1)">Go</button>
             <button class="btn btn-outline-secondary btn-sm" @click="resetFilters">✕</button>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -396,6 +405,7 @@ const apiError = ref('');
 const myRequests = ref([]);
 const workflow = ref(null);
 const newMilestone = ref({ title: '', description: '', dueDate: '' });
+const mobileFiltersOpen = ref(false);
 
 const isBrandUser = computed(() => ['Brand', 'Agency'].includes(authRole.value || localStorage.getItem('role')));
 
@@ -448,6 +458,9 @@ async function search(p) {
     totalResults.value = 0;
   } finally {
     loading.value = false;
+    if (typeof window !== 'undefined' && window.innerWidth < 992) {
+      mobileFiltersOpen.value = false;
+    }
   }
 }
 
@@ -646,6 +659,32 @@ function fmtNum(n) {
 .filter-dock {
   top: 86px;
   z-index: 9;
+}
+
+.filter-panel {
+  overflow: hidden;
+}
+
+@media (max-width: 991.98px) {
+  .filter-dock {
+    position: static !important;
+    top: auto;
+  }
+
+  .filter-panel {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: max-height 0.28s ease, opacity 0.22s ease, transform 0.22s ease;
+    pointer-events: none;
+  }
+
+  .filter-panel.open {
+    max-height: 520px;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
 }
 
 .modal-backdrop-custom {
