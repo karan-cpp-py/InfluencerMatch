@@ -112,7 +112,23 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowVueApp", policy =>
         policy.AllowAnyHeader()
               .AllowAnyMethod()
-              .WithOrigins(allowedOrigins.ToArray())
+              .SetIsOriginAllowed(origin =>
+              {
+                  if (string.IsNullOrWhiteSpace(origin)) return false;
+
+                  if (allowedOrigins.Any(o => string.Equals(o, origin, StringComparison.OrdinalIgnoreCase)))
+                  {
+                      return true;
+                  }
+
+                  // Support Vercel preview/production domains for frontend hosting.
+                  if (origin.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase))
+                  {
+                      return true;
+                  }
+
+                  return false;
+              })
               .AllowCredentials());
 });
 
