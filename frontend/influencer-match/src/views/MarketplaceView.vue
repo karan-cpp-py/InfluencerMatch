@@ -6,7 +6,7 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
           <h2 class="fw-bold mb-1">Creator Marketplace</h2>
-          <p class="text-muted mb-0">Discover registered creators, inspect analytics, and send collaboration requests.</p>
+          <p class="text-muted mb-0">India-only marketplace with regional-language creator discovery.</p>
         </div>
         <div class="d-flex gap-2 align-items-center">
           <span class="badge rounded-pill text-bg-light border fs-6 px-3 py-2">{{ totalResults }} creators</span>
@@ -34,15 +34,25 @@
           <div class="col-md-2">
             <label class="form-label small fw-semibold mb-1">Language</label>
             <select v-model="filters.language" class="form-select form-select-sm">
-              <option value="">All</option>
+              <option value="">Hindi + English (default)</option>
               <option v-for="l in languages" :key="l" :value="l">{{ l }}</option>
             </select>
+            <div v-if="suggestedStateLanguages.length" class="form-text">
+              Suggested: {{ suggestedStateLanguages.join(', ') }}
+            </div>
           </div>
           <div class="col-md-2">
+            <label class="form-label small fw-semibold mb-1">State / Region</label>
+            <select v-model="filters.region" class="form-select form-select-sm">
+              <option value="">All India states</option>
+              <option v-for="s in indiaStates" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </div>
+          <div class="col-md-1">
             <label class="form-label small fw-semibold mb-1">Category</label>
             <input v-model="filters.category" class="form-control form-control-sm" placeholder="Tech, Gaming…" />
           </div>
-          <div class="col-md-2">
+          <div class="col-md-1">
             <label class="form-label small fw-semibold mb-1">Tier</label>
             <select v-model="filters.creatorTier" class="form-select form-select-sm">
               <option value="">All Tiers</option>
@@ -393,8 +403,50 @@ const pageSize = 12;
 const languages = ['Hindi', 'English', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Punjabi', 'Bengali', 'Marathi', 'Haryanvi'];
 
 const filters = ref({
-  search: '', language: '', category: '', creatorTier: '', sortBy: 'subscribers'
+  search: '', language: '', region: '', category: '', creatorTier: '', sortBy: 'subscribers'
 });
+
+const indiaStates = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland',
+  'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
+];
+
+const stateLanguageMap = {
+  'Andhra Pradesh': ['Telugu', 'English', 'Hindi'],
+  'Arunachal Pradesh': ['English', 'Hindi'],
+  'Assam': ['Assamese', 'Bengali', 'English', 'Hindi'],
+  'Bihar': ['Hindi', 'English'],
+  'Chhattisgarh': ['Hindi', 'English'],
+  'Delhi': ['Hindi', 'English', 'Punjabi'],
+  'Goa': ['Konkani', 'English', 'Hindi'],
+  'Gujarat': ['Gujarati', 'Hindi', 'English'],
+  'Haryana': ['Haryanvi', 'Hindi', 'English'],
+  'Himachal Pradesh': ['Hindi', 'English'],
+  'Jharkhand': ['Hindi', 'English'],
+  'Karnataka': ['Kannada', 'English', 'Hindi'],
+  'Kerala': ['Malayalam', 'English', 'Hindi'],
+  'Madhya Pradesh': ['Hindi', 'English'],
+  'Maharashtra': ['Marathi', 'Hindi', 'English'],
+  'Manipur': ['Manipuri', 'English', 'Hindi'],
+  'Meghalaya': ['English', 'Hindi'],
+  'Mizoram': ['Mizo', 'English', 'Hindi'],
+  'Nagaland': ['English', 'Hindi'],
+  'Odisha': ['Odia', 'English', 'Hindi'],
+  'Punjab': ['Punjabi', 'Hindi', 'English'],
+  'Rajasthan': ['Hindi', 'English'],
+  'Sikkim': ['English', 'Hindi'],
+  'Tamil Nadu': ['Tamil', 'English', 'Hindi'],
+  'Telangana': ['Telugu', 'Urdu', 'English', 'Hindi'],
+  'Tripura': ['Bengali', 'English', 'Hindi'],
+  'Uttar Pradesh': ['Hindi', 'English'],
+  'Uttarakhand': ['Hindi', 'English'],
+  'West Bengal': ['Bengali', 'English', 'Hindi']
+};
+
+const suggestedStateLanguages = computed(() => stateLanguageMap[filters.value.region] || []);
 
 const detail = ref(null);
 const collabForm = ref({ campaignTitle: '', budget: 0, message: '' });
@@ -465,7 +517,7 @@ async function search(p) {
 }
 
 function resetFilters() {
-  filters.value = { search: '', language: '', category: '', creatorTier: '', sortBy: 'subscribers' };
+  filters.value = { search: '', language: '', region: '', category: '', creatorTier: '', sortBy: 'subscribers' };
   search(1);
 }
 
@@ -482,6 +534,7 @@ function labelForFilter(key) {
   return {
     search: 'Search',
     language: 'Language',
+    region: 'State',
     category: 'Category',
     creatorTier: 'Tier',
     sortBy: 'Sort'

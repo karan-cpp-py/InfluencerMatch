@@ -116,6 +116,10 @@ namespace InfluencerMatch.API.Controllers
             {
                 return BadRequest(new { error = ex.Message });
             }
+            catch (DbUpdateException)
+            {
+                return StatusCode(500, new { error = "Database update failed while adding milestone. Ensure latest migrations are applied." });
+            }
         }
 
         [HttpPatch("milestones/{milestoneId:int}/status")]
@@ -133,6 +137,10 @@ namespace InfluencerMatch.API.Controllers
             {
                 return BadRequest(new { error = ex.Message });
             }
+            catch (DbUpdateException)
+            {
+                return StatusCode(500, new { error = "Database update failed while updating milestone status. Ensure latest migrations are applied." });
+            }
         }
 
         [HttpPost("milestones/{milestoneId:int}/revision")]
@@ -148,6 +156,10 @@ namespace InfluencerMatch.API.Controllers
             catch (System.InvalidOperationException ex)
             {
                 return BadRequest(new { error = ex.Message });
+            }
+            catch (DbUpdateException)
+            {
+                return StatusCode(500, new { error = "Database update failed while requesting revision. Ensure latest migrations are applied." });
             }
         }
 

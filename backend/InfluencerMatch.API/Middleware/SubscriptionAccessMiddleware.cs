@@ -3,16 +3,19 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.Interfaces;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 
 namespace InfluencerMatch.API.Middleware
 {
     public class SubscriptionAccessMiddleware
     {
         private readonly RequestDelegate _next;
+        private readonly IHostEnvironment _env;
 
-        public SubscriptionAccessMiddleware(RequestDelegate next)
+        public SubscriptionAccessMiddleware(RequestDelegate next, IHostEnvironment env)
         {
             _next = next;
+            _env = env;
         }
 
         public async Task InvokeAsync(HttpContext context, ISubscriptionAccessService accessService)
@@ -41,6 +44,12 @@ namespace InfluencerMatch.API.Middleware
 
             if (pathRule == "creator_search")
             {
+                if (_env.IsDevelopment())
+                {
+                    await _next(context);
+                    return;
+                }
+
                 var access = await accessService.ValidateCreatorSearchAccessAsync(userId);
                 if (!access.Allowed)
                 {

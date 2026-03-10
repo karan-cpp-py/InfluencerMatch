@@ -13,6 +13,74 @@ namespace InfluencerMatch.Infrastructure.Repositories
 {
     public class CreatorRepository : Repository<Creator>, ICreatorRepository
     {
+        private static readonly string[] IndiaCountryAliases = { "in", "india", "bharat", "ind" };
+        private static readonly string[] DefaultDiscoveryLanguages = { "hindi", "english" };
+        private static readonly Dictionary<string, string[]> IndiaStateAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["andhra pradesh"] = new[] { "andhra pradesh", "andhra", "ap" },
+            ["arunachal pradesh"] = new[] { "arunachal pradesh", "arunachal" },
+            ["assam"] = new[] { "assam" },
+            ["bihar"] = new[] { "bihar" },
+            ["chhattisgarh"] = new[] { "chhattisgarh", "cg" },
+            ["goa"] = new[] { "goa" },
+            ["gujarat"] = new[] { "gujarat" },
+            ["haryana"] = new[] { "haryana" },
+            ["himachal pradesh"] = new[] { "himachal pradesh", "himachal", "hp" },
+            ["jharkhand"] = new[] { "jharkhand" },
+            ["karnataka"] = new[] { "karnataka" },
+            ["kerala"] = new[] { "kerala" },
+            ["madhya pradesh"] = new[] { "madhya pradesh", "mp" },
+            ["maharashtra"] = new[] { "maharashtra", "mh" },
+            ["manipur"] = new[] { "manipur" },
+            ["meghalaya"] = new[] { "meghalaya" },
+            ["mizoram"] = new[] { "mizoram" },
+            ["nagaland"] = new[] { "nagaland" },
+            ["odisha"] = new[] { "odisha", "orissa" },
+            ["punjab"] = new[] { "punjab" },
+            ["rajasthan"] = new[] { "rajasthan" },
+            ["sikkim"] = new[] { "sikkim" },
+            ["tamil nadu"] = new[] { "tamil nadu", "tn" },
+            ["telangana"] = new[] { "telangana", "tg", "ts" },
+            ["tripura"] = new[] { "tripura" },
+            ["uttar pradesh"] = new[] { "uttar pradesh", "up" },
+            ["uttarakhand"] = new[] { "uttarakhand", "uk" },
+            ["west bengal"] = new[] { "west bengal", "bengal", "wb" },
+            ["delhi"] = new[] { "delhi", "nct", "new delhi" }
+        };
+
+        private static readonly Dictionary<string, string[]> StateLanguages = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["andhra pradesh"] = new[] { "telugu", "english", "hindi" },
+            ["arunachal pradesh"] = new[] { "english", "hindi" },
+            ["assam"] = new[] { "assamese", "bengali", "english", "hindi" },
+            ["bihar"] = new[] { "hindi", "english" },
+            ["chhattisgarh"] = new[] { "hindi", "english" },
+            ["goa"] = new[] { "konkani", "english", "hindi" },
+            ["gujarat"] = new[] { "gujarati", "hindi", "english" },
+            ["haryana"] = new[] { "haryanvi", "hindi", "english" },
+            ["himachal pradesh"] = new[] { "hindi", "english" },
+            ["jharkhand"] = new[] { "hindi", "english" },
+            ["karnataka"] = new[] { "kannada", "english", "hindi" },
+            ["kerala"] = new[] { "malayalam", "english", "hindi" },
+            ["madhya pradesh"] = new[] { "hindi", "english" },
+            ["maharashtra"] = new[] { "marathi", "hindi", "english" },
+            ["manipur"] = new[] { "manipuri", "english", "hindi" },
+            ["meghalaya"] = new[] { "english", "hindi" },
+            ["mizoram"] = new[] { "mizo", "english", "hindi" },
+            ["nagaland"] = new[] { "english", "hindi" },
+            ["odisha"] = new[] { "odia", "english", "hindi" },
+            ["punjab"] = new[] { "punjabi", "hindi", "english" },
+            ["rajasthan"] = new[] { "hindi", "english" },
+            ["sikkim"] = new[] { "english", "hindi" },
+            ["tamil nadu"] = new[] { "tamil", "english", "hindi" },
+            ["telangana"] = new[] { "telugu", "urdu", "english", "hindi" },
+            ["tripura"] = new[] { "bengali", "english", "hindi" },
+            ["uttar pradesh"] = new[] { "hindi", "english" },
+            ["uttarakhand"] = new[] { "hindi", "english" },
+            ["west bengal"] = new[] { "bengali", "english", "hindi" },
+            ["delhi"] = new[] { "hindi", "english", "punjabi" }
+        };
+
         public CreatorRepository(ApplicationDbContext context) : base(context) { }
 
         public async Task<Creator?> GetByChannelIdAsync(string channelId) =>
@@ -62,14 +130,8 @@ namespace InfluencerMatch.Infrastructure.Repositories
             if (!string.IsNullOrWhiteSpace(q.Platform))
                 query = query.Where(x => x.c.Platform == q.Platform);
 
-            if (!string.IsNullOrWhiteSpace(q.Country))
-                query = query.Where(x => x.c.Country == q.Country);
-
-            if (!string.IsNullOrWhiteSpace(q.Language))
-                query = query.Where(x => x.c.Language == q.Language);
-
-            if (!string.IsNullOrWhiteSpace(q.Region))
-                query = query.Where(x => x.c.Region == q.Region);
+            // Product scope: India-first discovery only.
+            query = query.Where(x => x.c.Country != null && IndiaCountryAliases.Contains(x.c.Country.ToLower()));
 
             if (!string.IsNullOrWhiteSpace(q.CreatorTier))
                 query = query.Where(x => x.c.CreatorTier == q.CreatorTier);
@@ -90,6 +152,25 @@ namespace InfluencerMatch.Infrastructure.Repositories
                 query = query.Where(x => x.c.Subscribers <= q.MaxSubscribers.Value);
 
             var rows = await query.ToListAsync();
+
+            var selectedRegion = NormalizeRegionKey(q.Region);
+            var selectedLanguage = string.IsNullOrWhiteSpace(q.Language)
+                ? null
+                : q.Language.Trim().ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                rows = rows.Where(x => MatchesRegion(x.c, selectedRegion!)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedLanguage))
+            {
+                rows = rows.Where(x => string.Equals(x.c.Language, selectedLanguage, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                rows = rows.Where(x => x.c.Language != null && DefaultDiscoveryLanguages.Contains(x.c.Language.ToLowerInvariant())).ToList();
+            }
 
             var projected = rows.Select(x =>
             {
@@ -202,5 +283,45 @@ namespace InfluencerMatch.Infrastructure.Repositories
             await _context.CreatorAnalytics
                 .AsNoTracking()
                 .FirstOrDefaultAsync(a => a.CreatorId == creatorId);
+
+        private static string? NormalizeRegionKey(string? region)
+        {
+            if (string.IsNullOrWhiteSpace(region)) return null;
+            var probe = region.Trim().ToLowerInvariant();
+            foreach (var kv in IndiaStateAliases)
+            {
+                if (kv.Value.Any(a => probe.Contains(a))) return kv.Key;
+            }
+            return null;
+        }
+
+        private static bool MatchesRegion(Creator creator, string regionKey)
+        {
+            var haystacks = new[]
+            {
+                creator.Region,
+                creator.Country,
+                creator.ChannelName,
+                creator.Description
+            }
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.ToLowerInvariant())
+            .ToList();
+
+            if (IndiaStateAliases.TryGetValue(regionKey, out var aliases)
+                && haystacks.Any(text => aliases.Any(text.Contains)))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(creator.Language)
+                && StateLanguages.TryGetValue(regionKey, out var langs)
+                && langs.Contains(creator.Language, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
     }
 }

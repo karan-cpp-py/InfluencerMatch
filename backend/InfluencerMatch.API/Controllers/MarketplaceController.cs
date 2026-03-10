@@ -26,6 +26,74 @@ namespace InfluencerMatch.API.Controllers
     [Route("api/marketplace")]
     public class MarketplaceController : ControllerBase
     {
+        private static readonly string[] IndiaCountryAliases = { "in", "india", "bharat", "ind" };
+        private static readonly string[] DefaultDiscoveryLanguages = { "hindi", "english" };
+        private static readonly Dictionary<string, string[]> IndiaStateAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["andhra pradesh"] = new[] { "andhra pradesh", "andhra", "ap" },
+            ["arunachal pradesh"] = new[] { "arunachal pradesh", "arunachal" },
+            ["assam"] = new[] { "assam" },
+            ["bihar"] = new[] { "bihar" },
+            ["chhattisgarh"] = new[] { "chhattisgarh", "cg" },
+            ["goa"] = new[] { "goa" },
+            ["gujarat"] = new[] { "gujarat" },
+            ["haryana"] = new[] { "haryana" },
+            ["himachal pradesh"] = new[] { "himachal pradesh", "himachal", "hp" },
+            ["jharkhand"] = new[] { "jharkhand" },
+            ["karnataka"] = new[] { "karnataka" },
+            ["kerala"] = new[] { "kerala" },
+            ["madhya pradesh"] = new[] { "madhya pradesh", "mp" },
+            ["maharashtra"] = new[] { "maharashtra", "mh" },
+            ["manipur"] = new[] { "manipur" },
+            ["meghalaya"] = new[] { "meghalaya" },
+            ["mizoram"] = new[] { "mizoram" },
+            ["nagaland"] = new[] { "nagaland" },
+            ["odisha"] = new[] { "odisha", "orissa" },
+            ["punjab"] = new[] { "punjab" },
+            ["rajasthan"] = new[] { "rajasthan" },
+            ["sikkim"] = new[] { "sikkim" },
+            ["tamil nadu"] = new[] { "tamil nadu", "tn" },
+            ["telangana"] = new[] { "telangana", "tg", "ts" },
+            ["tripura"] = new[] { "tripura" },
+            ["uttar pradesh"] = new[] { "uttar pradesh", "up" },
+            ["uttarakhand"] = new[] { "uttarakhand", "uk" },
+            ["west bengal"] = new[] { "west bengal", "bengal", "wb" },
+            ["delhi"] = new[] { "delhi", "nct", "new delhi" }
+        };
+
+        private static readonly Dictionary<string, string[]> StateLanguages = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["andhra pradesh"] = new[] { "telugu", "english", "hindi" },
+            ["arunachal pradesh"] = new[] { "english", "hindi" },
+            ["assam"] = new[] { "assamese", "bengali", "english", "hindi" },
+            ["bihar"] = new[] { "hindi", "english" },
+            ["chhattisgarh"] = new[] { "hindi", "english" },
+            ["goa"] = new[] { "konkani", "english", "hindi" },
+            ["gujarat"] = new[] { "gujarati", "hindi", "english" },
+            ["haryana"] = new[] { "haryanvi", "hindi", "english" },
+            ["himachal pradesh"] = new[] { "hindi", "english" },
+            ["jharkhand"] = new[] { "hindi", "english" },
+            ["karnataka"] = new[] { "kannada", "english", "hindi" },
+            ["kerala"] = new[] { "malayalam", "english", "hindi" },
+            ["madhya pradesh"] = new[] { "hindi", "english" },
+            ["maharashtra"] = new[] { "marathi", "hindi", "english" },
+            ["manipur"] = new[] { "manipuri", "english", "hindi" },
+            ["meghalaya"] = new[] { "english", "hindi" },
+            ["mizoram"] = new[] { "mizo", "english", "hindi" },
+            ["nagaland"] = new[] { "english", "hindi" },
+            ["odisha"] = new[] { "odia", "english", "hindi" },
+            ["punjab"] = new[] { "punjabi", "hindi", "english" },
+            ["rajasthan"] = new[] { "hindi", "english" },
+            ["sikkim"] = new[] { "english", "hindi" },
+            ["tamil nadu"] = new[] { "tamil", "english", "hindi" },
+            ["telangana"] = new[] { "telugu", "urdu", "english", "hindi" },
+            ["tripura"] = new[] { "bengali", "english", "hindi" },
+            ["uttar pradesh"] = new[] { "hindi", "english" },
+            ["uttarakhand"] = new[] { "hindi", "english" },
+            ["west bengal"] = new[] { "bengali", "english", "hindi" },
+            ["delhi"] = new[] { "hindi", "english", "punjabi" }
+        };
+
         private readonly ApplicationDbContext   _db;
         private readonly ICreatorChannelService  _channelService;
         private readonly LegacyChannelCache      _legacyCache;
@@ -148,14 +216,11 @@ namespace InfluencerMatch.API.Controllers
 
             if (!string.IsNullOrWhiteSpace(query.Search))
                 q = q.Where(x => x.ch.ChannelName.Contains(query.Search));
-            if (!string.IsNullOrWhiteSpace(query.Language))
-                q = q.Where(x => x.pr.Language == query.Language);
+            // Product scope: India-only discovery.
+            q = q.Where(x => x.pr.Country != null && IndiaCountryAliases.Contains(x.pr.Country.ToLower()));
+
             if (!string.IsNullOrWhiteSpace(query.Category))
                 q = q.Where(x => x.pr.Category == query.Category);
-            if (!string.IsNullOrWhiteSpace(query.Country))
-                q = q.Where(x => x.pr.Country == query.Country);
-            if (!string.IsNullOrWhiteSpace(query.Region))
-                q = q.Where(x => x.pr.Country == query.Region);
             if (!string.IsNullOrWhiteSpace(query.CreatorTier))
                 q = q.Where(x => x.ch.CreatorTier == query.CreatorTier);
             if (query.MinSubscribers.HasValue)
@@ -163,6 +228,31 @@ namespace InfluencerMatch.API.Controllers
             if (query.MaxSubscribers.HasValue)
                 q = q.Where(x => x.ch.Subscribers <= query.MaxSubscribers.Value);
             var records = await q.ToListAsync();
+
+            var selectedRegion = NormalizeRegionKey(query.Region);
+            var selectedLanguage = string.IsNullOrWhiteSpace(query.Language)
+                ? null
+                : query.Language.Trim().ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                records = records.Where(x => MatchesRegion(
+                    null,
+                    x.pr.Country,
+                    x.pr.Language,
+                    x.ch.ChannelName,
+                    x.ch.Description,
+                    selectedRegion!)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedLanguage))
+            {
+                records = records.Where(x => string.Equals(x.pr.Language, selectedLanguage, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                records = records.Where(x => x.pr.Language != null && DefaultDiscoveryLanguages.Contains(x.pr.Language.ToLowerInvariant())).ToList();
+            }
             var items = records.Select(x => new MarketplaceCreatorDto
             {
                 CreatorProfileId = x.pr.CreatorProfileId,
@@ -204,17 +294,25 @@ namespace InfluencerMatch.API.Controllers
                 q = q.Where(x => x.u.Name.Contains(query.Search));
             if (!string.IsNullOrWhiteSpace(query.Category))
                 q = q.Where(x => x.i.Category == query.Category);
-            if (!string.IsNullOrWhiteSpace(query.Country))
-                q = q.Where(x => x.i.Location == query.Country);
+            // Product scope: India-only discovery.
+            q = q.Where(x => x.i.Location != null && IndiaCountryAliases.Contains(x.i.Location.ToLower()));
             if (query.MinSubscribers.HasValue)
                 q = q.Where(x => x.i.Followers >= query.MinSubscribers.Value);
             if (query.MaxSubscribers.HasValue)
                 q = q.Where(x => x.i.Followers <= query.MaxSubscribers.Value);
-            // Unsupported filters for legacy: Language, CreatorTier
+            // Unsupported filter for legacy records: explicit language.
             if (!string.IsNullOrWhiteSpace(query.Language) || !string.IsNullOrWhiteSpace(query.CreatorTier))
                 return new List<MarketplaceCreatorDto>();
 
             var records = await q.ToListAsync();
+
+            var selectedRegion = NormalizeRegionKey(query.Region);
+            if (!string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                records = records
+                    .Where(x => MatchesRegion(null, x.i.Location, null, x.u.Name, x.i.YouTubeLink, selectedRegion!))
+                    .ToList();
+            }
 
             // Read from SuperAdmin-populated cache — no live YouTube calls on page load
             return records.Select(x =>
@@ -320,6 +418,46 @@ namespace InfluencerMatch.API.Controllers
             >= 10_000    => "Micro",
             _            => "Nano"
         };
+
+        private static string? NormalizeRegionKey(string? region)
+        {
+            if (string.IsNullOrWhiteSpace(region)) return null;
+            var probe = region.Trim().ToLowerInvariant();
+            foreach (var kv in IndiaStateAliases)
+            {
+                if (kv.Value.Any(a => probe.Contains(a))) return kv.Key;
+            }
+            return null;
+        }
+
+        private static bool MatchesRegion(
+            string? region,
+            string? country,
+            string? language,
+            string? channelName,
+            string? description,
+            string regionKey)
+        {
+            var haystacks = new[] { region, country, channelName, description }
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.ToLowerInvariant())
+                .ToList();
+
+            if (IndiaStateAliases.TryGetValue(regionKey, out var aliases)
+                && haystacks.Any(text => aliases.Any(text.Contains)))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(language)
+                && StateLanguages.TryGetValue(regionKey, out var langs)
+                && langs.Contains(language, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
 
         private static double EstimateFromVideoRows(long subscribers, List<ChannelVideoDto> videos)
         {

@@ -6,7 +6,7 @@
       <div class="d-flex align-items-center justify-content-between mb-4">
         <div>
           <h2 class="fw-bold mb-1">Creator Search Intelligence</h2>
-          <p class="text-muted mb-0">Filter by category, subscribers, engagement rate and platform</p>
+          <p class="text-muted mb-0">India-only creator discovery with regional language filters</p>
         </div>
         <span class="badge rounded-pill text-bg-light border px-3 py-2">{{ fmtNum(totalCount) }} indexed</span>
       </div>
@@ -57,22 +57,29 @@
               <div class="mb-3">
                 <label class="form-label small text-muted">Country</label>
                 <select v-model="filters.country" class="form-select form-select-sm" @change="runSearch">
-                  <option value="">All countries</option>
                   <option value="IN">🇮🇳 India (IN)</option>
-                  <option value="US">🇺🇸 United States (US)</option>
-                  <option value="GB">🇬🇧 United Kingdom (GB)</option>
-                  <option value="CA">🇨🇦 Canada (CA)</option>
-                  <option value="AU">🇦🇺 Australia (AU)</option>
                 </select>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label small text-muted">State / Region</label>
+                <select v-model="filters.region" class="form-select form-select-sm" @change="runSearch">
+                  <option value="">All India states</option>
+                  <option v-for="s in indiaStates" :key="s" :value="s">{{ s }}</option>
+                </select>
+                <div v-if="suggestedStateLanguages.length" class="form-text">
+                  Suggested languages: {{ suggestedStateLanguages.join(', ') }}
+                </div>
               </div>
 
               <!-- Language -->
               <div class="mb-3">
                 <label class="form-label small text-muted">Language</label>
                 <select v-model="filters.language" class="form-select form-select-sm" @change="runSearch">
-                  <option value="">All languages</option>
+                  <option value="">Hindi + English (default)</option>
                   <option v-for="l in languages" :key="l" :value="l">{{ l }}</option>
                 </select>
+                <div class="form-text">Select a regional language to discover state-focused creators.</div>
               </div>
 
               <!-- Subscribers range -->
@@ -319,6 +326,7 @@ const activeFilterCount = computed(() => {
   if (f.platform) n += 1;
   if (f.category) n += 1;
   if (f.country && f.country !== 'IN') n += 1;
+  if (f.region) n += 1;
   if (f.language) n += 1;
   if (f.minSubscribers !== 1000) n += 1;
   if (f.maxSubscribers !== 500000) n += 1;
@@ -332,12 +340,55 @@ const filters = ref({
   platform: '',
   category: '',
   country: 'IN',   // default India
+  region: '',
   language: '',
   minSubscribers: 1000,      // show only small/micro/mid-tier creators by default
   maxSubscribers: 500000,
   minEngagement: null,
   sortBy: 'subscribers',
 });
+
+const indiaStates = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland',
+  'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal'
+];
+
+const stateLanguageMap = {
+  'Andhra Pradesh': ['Telugu', 'English', 'Hindi'],
+  'Arunachal Pradesh': ['English', 'Hindi'],
+  'Assam': ['Assamese', 'Bengali', 'English', 'Hindi'],
+  'Bihar': ['Hindi', 'English'],
+  'Chhattisgarh': ['Hindi', 'English'],
+  'Delhi': ['Hindi', 'English', 'Punjabi'],
+  'Goa': ['Konkani', 'English', 'Hindi'],
+  'Gujarat': ['Gujarati', 'Hindi', 'English'],
+  'Haryana': ['Haryanvi', 'Hindi', 'English'],
+  'Himachal Pradesh': ['Hindi', 'English'],
+  'Jharkhand': ['Hindi', 'English'],
+  'Karnataka': ['Kannada', 'English', 'Hindi'],
+  'Kerala': ['Malayalam', 'English', 'Hindi'],
+  'Madhya Pradesh': ['Hindi', 'English'],
+  'Maharashtra': ['Marathi', 'Hindi', 'English'],
+  'Manipur': ['Manipuri', 'English', 'Hindi'],
+  'Meghalaya': ['English', 'Hindi'],
+  'Mizoram': ['Mizo', 'English', 'Hindi'],
+  'Nagaland': ['English', 'Hindi'],
+  'Odisha': ['Odia', 'English', 'Hindi'],
+  'Punjab': ['Punjabi', 'Hindi', 'English'],
+  'Rajasthan': ['Hindi', 'English'],
+  'Sikkim': ['English', 'Hindi'],
+  'Tamil Nadu': ['Tamil', 'English', 'Hindi'],
+  'Telangana': ['Telugu', 'Urdu', 'English', 'Hindi'],
+  'Tripura': ['Bengali', 'English', 'Hindi'],
+  'Uttar Pradesh': ['Hindi', 'English'],
+  'Uttarakhand': ['Hindi', 'English'],
+  'West Bengal': ['Bengali', 'English', 'Hindi']
+};
+
+const suggestedStateLanguages = computed(() => stateLanguageMap[filters.value.region] || []);
 
 let debounceTimer = null;
 function debounce() {
@@ -400,6 +451,7 @@ async function fetchCreators() {
         platform:        filters.value.platform   || undefined,
         category:        filters.value.category   || undefined,
         country:         filters.value.country    || undefined,
+        region:          filters.value.region     || undefined,
         language:        filters.value.language   || undefined,
         minSubscribers:  filters.value.minSubscribers || undefined,
         maxSubscribers:  filters.value.maxSubscribers || undefined,
@@ -437,7 +489,7 @@ async function fetchLanguages() {
 
 function runSearch() { page.value = 1; fetchCreators(); }
 function resetFilters() {
-  filters.value = { search:'', platform:'', category:'', country:'IN', language:'', minSubscribers:1000, maxSubscribers:500000, minEngagement:null, sortBy:'subscribers' };
+  filters.value = { search:'', platform:'', category:'', country:'IN', region:'', language:'', minSubscribers:1000, maxSubscribers:500000, minEngagement:null, sortBy:'subscribers' };
   page.value = 1;
   fetchCreators();
 }

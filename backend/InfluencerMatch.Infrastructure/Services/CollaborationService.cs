@@ -168,7 +168,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 RequestId = requestId,
                 Title = dto.Title,
                 Description = dto.Description,
-                DueDate = dto.DueDate,
+                DueDate = NormalizeToUtc(dto.DueDate),
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
             };
@@ -417,6 +417,21 @@ namespace InfluencerMatch.Infrastructure.Services
                     UpdatedAt = x.UpdatedAt
                 })
                 .FirstAsync();
+        }
+
+        private static DateTime? NormalizeToUtc(DateTime? value)
+        {
+            if (!value.HasValue)
+            {
+                return null;
+            }
+
+            return value.Value.Kind switch
+            {
+                DateTimeKind.Utc => value.Value,
+                DateTimeKind.Local => value.Value.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            };
         }
 
         private async Task LoadCreatorChannelName(CollaborationRequest r)
