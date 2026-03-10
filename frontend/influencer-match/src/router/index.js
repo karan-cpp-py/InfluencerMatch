@@ -30,6 +30,11 @@ const routes = [
     component: () => import('../views/SuperAdminView.vue'),
     meta: { requiresAuth: false } // access control handled in the view itself
   },
+    {
+      path: '/admin/youtube-importer',
+      component: () => import('../views/YoutubeImporterView.vue'),
+      meta: { requiresAuth: false } // access control handled in the view itself
+    },
 
   // ── Creator (self-registered) ──────────────────────────────────────────
   {
@@ -66,6 +71,7 @@ const routes = [
   },
 
   // ── Brand discovery / analytics ────────────────────────────────────────
+  { path: '/brand/youtube-creators', component: () => import('../views/BrandYouTubeCreatorsView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/discovery',            component: () => import('../views/CreatorDiscovery.vue'),    meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/creators/search',      component: () => import('../views/CreatorSearch.vue'),       meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/creator/:id/analytics',       component: () => import('../views/CreatorAnalyticsView.vue'),  meta: { requiresAuth: true } },

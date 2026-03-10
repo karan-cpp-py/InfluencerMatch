@@ -104,6 +104,7 @@
                 Discover
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
+                <li><router-link class="dropdown-item" to="/brand/youtube-creators">YouTube Creator Catalogue</router-link></li>
                 <li><router-link class="dropdown-item" to="/discovery">Creator Discovery</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/search">Creator Search</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/rising">Rising Creators</router-link></li>

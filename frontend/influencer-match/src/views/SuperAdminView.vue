@@ -204,6 +204,16 @@
 
     <!-- Job cards -->
     <h5 class="fw-bold mb-3">YouTube API Jobs</h5>
+        <!-- YouTube Creator Importer shortcut -->
+        <div class="card border-0 shadow-sm mb-4 p-3 d-flex flex-row align-items-center gap-3">
+          <span style="font-size:2rem;">🎬</span>
+          <div class="flex-fill">
+            <h6 class="fw-bold mb-0">YouTube Creator Importer</h6>
+            <p class="text-muted small mb-0">Search YouTube by niche/region, bulk-import creator profiles, and parse contact hints from channel descriptions.</p>
+          </div>
+          <router-link to="/admin/youtube-importer" class="btn btn-primary btn-sm">Open Importer →</router-link>
+        </div>
+
     <div class="row g-3">
       <div class="col-md-6" v-for="job in jobs" :key="job.id">
         <div class="card border-0 shadow-sm h-100 panel-card job-card">

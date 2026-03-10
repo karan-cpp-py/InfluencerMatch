@@ -78,6 +78,8 @@ builder.Services.AddScoped<INotificationService,        InfluencerMatch.Infrastr
 // Feature 8: Video Analytics + Brand Collaboration Detection
 builder.Services.AddScoped<IVideoAnalyticsService,      InfluencerMatch.Infrastructure.Services.VideoAnalyticsService>();
 builder.Services.AddScoped<IYouTubeVideoAnalysisService, InfluencerMatch.Infrastructure.Services.YouTubeVideoAnalysisService>();
+// YouTube Creator Import — SuperAdmin manual job
+builder.Services.AddScoped<IYouTubeCreatorImportService, InfluencerMatch.Infrastructure.Services.YouTubeCreatorImportService>();
 // AddHostedService<CreatorStatsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 // AddHostedService<VideoMetricsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 

@@ -50,6 +50,7 @@ namespace InfluencerMatch.API.Controllers
 
         private readonly IVideoAnalyticsService    _videoAnalytics;
         private readonly INotificationService      _notifications;
+            private readonly IYouTubeCreatorImportService _youTubeImport;
 
         public SuperAdminController(
             ApplicationDbContext       db,
@@ -64,7 +65,8 @@ namespace InfluencerMatch.API.Controllers
             LegacyChannelCache         legacyCache,
             IVideoAnalyticsService     videoAnalytics,
             INotificationService       notifications,
-            IHttpClientFactory         httpClientFactory,
+                IYouTubeCreatorImportService youTubeImport,
+                IHttpClientFactory         httpClientFactory,
             IConfiguration             config)
         {
             _db                = db;
@@ -80,6 +82,7 @@ namespace InfluencerMatch.API.Controllers
             _videoAnalytics    = videoAnalytics;
             _notifications     = notifications;
             _httpClientFactory = httpClientFactory;
+                _youTubeImport     = youTubeImport;
             _apiKey =
                 config["YouTube:ApiKey"]
                 ?? config["YouTube__ApiKey"]
@@ -1154,6 +1157,113 @@ namespace InfluencerMatch.API.Controllers
             }
 
             return Ok(new { apiKeyConfigured = !string.IsNullOrWhiteSpace(_apiKey), apiKeyPrefix = _apiKey?.Length > 8 ? _apiKey[..8] + "..." : "too short", tests = results });
+        }
+
+        // ── YouTube Creator Import ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Search YouTube for channels matching a query and upsert them into the Creators table.
+        /// Parses emails and social handles from channel descriptions.
+        /// Requires YouTube:ApiKey to be set in appsettings.json.
+        ///
+        /// This job is manual only and never runs automatically.
+        /// </summary>
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpPost("jobs/youtube-import")]
+        public async Task<IActionResult> RunYouTubeImport(
+            [FromBody] YouTubeImportRequestDto dto,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey))
+                return BadRequest(new { error = "YouTube:ApiKey is not configured in appsettings.json. Add it to run this job." });
+
+            if (string.IsNullOrWhiteSpace(dto.Query))
+                return BadRequest(new { error = "Query is required." });
+
+            try
+            {
+                using var cts = JobTimeout(ct, minutes: 5);
+                var result = await _youTubeImport.ImportAsync(dto, cts.Token);
+                return Ok(result);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return TimedOut("youtube-import");
+            }
+        }
+
+        /// <summary>
+        /// Browse all creators currently in the database (paginated, filterable).
+        /// Used by the SuperAdmin YouTube importer results view.
+        /// </summary>
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpGet("creators")]
+        public async Task<IActionResult> GetCreators(
+            [FromQuery] string? search,
+            [FromQuery] string? category,
+            [FromQuery] string? country,
+            [FromQuery] string? tier,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            CancellationToken ct = default)
+        {
+            page = page < 1 ? 1 : page;
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var query = _db.Creators.AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim().ToLower();
+                query = query.Where(c =>
+                    c.ChannelName.ToLower().Contains(s) ||
+                    (c.Description != null && c.Description.ToLower().Contains(s)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(category))
+                query = query.Where(c => c.Category == category);
+
+            if (!string.IsNullOrWhiteSpace(country))
+                query = query.Where(c => c.Country == country);
+
+            if (!string.IsNullOrWhiteSpace(tier))
+                query = query.Where(c => c.CreatorTier == tier);
+
+            var total = await query.CountAsync(ct);
+            var rows = await query
+                .OrderByDescending(c => c.Subscribers)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(c => new
+                {
+                    c.CreatorId,
+                    c.ChannelId,
+                    c.ChannelName,
+                    c.Subscribers,
+                    c.TotalViews,
+                    c.VideoCount,
+                    c.Category,
+                    c.Country,
+                    c.CreatorTier,
+                    c.IsSmallCreator,
+                    c.Language,
+                    c.Region,
+                    c.ThumbnailUrl,
+                    c.ChannelUrl,
+                    c.EngagementRate,
+                    c.AvgViews,
+                    c.AvgLikes,
+                    c.AvgComments,
+                    c.PublicEmail,
+                    c.InstagramHandle,
+                    c.TwitterHandle,
+                    c.LastRefreshedAt,
+                    c.CreatedAt,
+                    c.UpdatedAt,
+                })
+                .ToListAsync(ct);
+
+            return Ok(new { page, pageSize, total, items = rows });
         }
     }
 

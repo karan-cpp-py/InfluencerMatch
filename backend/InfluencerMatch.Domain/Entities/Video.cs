@@ -29,6 +29,15 @@ namespace InfluencerMatch.Domain.Entities
         /// <summary>When the video was published on YouTube.</summary>
         public DateTime PublishedAt { get; set; }
 
+        /// <summary>Comma-separated tags from the video snippet.</summary>
+        public string? Tags { get; set; }
+
+        /// <summary>Short description of the video (first 300 chars).</summary>
+        public string? Description { get; set; }
+
+        /// <summary>Engagement rate for this specific video: (likes+comments)/views.</summary>
+        public double EngagementRate { get; set; }
+
         /// <summary>When this row was last updated from the YouTube API.</summary>
         public DateTime FetchedAt { get; set; }
 

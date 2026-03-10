@@ -46,6 +46,37 @@ namespace InfluencerMatch.Domain.Entities
         public DateTime  CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
+        // ── YouTube channel metadata (populated by import job) ─────────────
+        /// <summary>Profile picture URL (snippet.thumbnails.high.url).</summary>
+        public string? ThumbnailUrl { get; set; }
+
+        /// <summary>Channel banner/art URL.</summary>
+        public string? BannerUrl { get; set; }
+
+        /// <summary>Canonical channel URL, e.g. https://youtube.com/@Handle</summary>
+        public string? ChannelUrl { get; set; }
+
+        /// <summary>When the YouTube channel was originally published.</summary>
+        public DateTime? PublishedAt { get; set; }
+
+        /// <summary>Comma-separated channel keywords from brandingSettings.</summary>
+        public string? ChannelTags { get; set; }
+
+        // ── Parsed contact info ────────────────────────────────────────────
+        public string? PublicEmail    { get; set; }
+        public string? InstagramHandle { get; set; }
+        public string? TwitterHandle   { get; set; }
+
+        // ── Pre-computed analytics (updated on each import refresh) ────────
+        public double AvgViews       { get; set; }
+        public double AvgLikes       { get; set; }
+        public double AvgComments    { get; set; }
+        /// <summary>(AvgLikes + AvgComments) / AvgViews — pre-computed from last 10 videos.</summary>
+        public double EngagementRate { get; set; }
+
+        /// <summary>When the import job last refreshed this row.</summary>
+        public DateTime? LastRefreshedAt { get; set; }
+
         // ── Static tier helpers ────────────────────────────────────────────
         /// <summary>
         /// Computes creator tier from subscriber count:<br/>

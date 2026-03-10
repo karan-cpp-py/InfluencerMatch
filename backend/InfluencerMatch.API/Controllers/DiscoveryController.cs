@@ -219,4 +219,171 @@ public class DiscoveryController : ControllerBase
         if (apiKey.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase)) return false;
         return true;
     }
+
+    // ── Brand-facing: imported YouTube creators ──────────────────────────────
+
+    /// <summary>
+    /// Returns YouTube creators imported by SuperAdmin (UserId == null).
+    /// Paginated and filterable. Accessible to any authenticated brand/user.
+    /// GET /api/discovery/youtube-creators
+    /// </summary>
+    [HttpGet("youtube-creators")]
+    public async Task<IActionResult> GetYouTubeCreators(
+        [FromQuery] string? search        = null,
+        [FromQuery] string? category      = null,
+        [FromQuery] string? tier          = null,
+        [FromQuery] string? country       = null,
+        [FromQuery] long?   minSubs       = null,
+        [FromQuery] long?   maxSubs       = null,
+        [FromQuery] double? minEngagement = null,
+        [FromQuery] string  sort          = "subscribers",
+        [FromQuery] int     page          = 1,
+        [FromQuery] int     pageSize      = 20)
+    {
+        if (pageSize > 100) pageSize = 100;
+
+        // Imported creators: UserId is null
+        var query = _db.Creators.Where(c => c.UserId == null);
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(c => c.ChannelName != null &&
+                EF.Functions.ILike(c.ChannelName, $"%{search}%"));
+
+        if (!string.IsNullOrWhiteSpace(category))
+            query = query.Where(c => c.Category == category);
+
+        if (!string.IsNullOrWhiteSpace(tier))
+            query = query.Where(c => c.CreatorTier == tier);
+
+        if (!string.IsNullOrWhiteSpace(country))
+            query = query.Where(c => c.Country == country);
+
+        if (minSubs.HasValue)
+            query = query.Where(c => c.Subscribers >= minSubs.Value);
+
+        if (maxSubs.HasValue)
+            query = query.Where(c => c.Subscribers <= maxSubs.Value);
+
+        if (minEngagement.HasValue)
+            query = query.Where(c => c.EngagementRate >= minEngagement.Value);
+
+        query = sort switch
+        {
+            "engagement" => query.OrderByDescending(c => c.EngagementRate),
+            "views"      => query.OrderByDescending(c => c.TotalViews),
+            "newest"     => query.OrderByDescending(c => c.LastRefreshedAt),
+            _            => query.OrderByDescending(c => c.Subscribers)
+        };
+
+        var totalCount = await query.CountAsync();
+        var creators = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(c => new {
+                c.CreatorId,
+                c.ChannelId,
+                c.ChannelName,
+                c.ThumbnailUrl,
+                c.ChannelUrl,
+                c.Category,
+                c.Country,
+                c.CreatorTier,
+                c.Subscribers,
+                c.TotalViews,
+                c.VideoCount,
+                c.AvgViews,
+                c.AvgLikes,
+                c.AvgComments,
+                c.EngagementRate,
+                c.PublicEmail,
+                c.InstagramHandle,
+                c.TwitterHandle,
+                c.ChannelTags,
+                c.PublishedAt,
+                c.LastRefreshedAt,
+            })
+            .ToListAsync();
+
+        return Ok(new {
+            creators,
+            totalCount,
+            page,
+            pageSize,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        });
+    }
+
+    /// <summary>
+    /// Returns full profile for one imported YouTube creator including recent videos.
+    /// GET /api/discovery/youtube-creators/{creatorId}
+    /// </summary>
+    [HttpGet("youtube-creators/{creatorId:int}")]
+    public async Task<IActionResult> GetYouTubeCreatorDetail(int creatorId)
+    {
+        var creator = await _db.Creators
+            .Where(c => c.CreatorId == creatorId && c.UserId == null)
+            .Select(c => new {
+                c.CreatorId,
+                c.ChannelId,
+                c.ChannelName,
+                c.Description,
+                c.ThumbnailUrl,
+                c.BannerUrl,
+                c.ChannelUrl,
+                c.Category,
+                c.Country,
+                c.CreatorTier,
+                c.Subscribers,
+                c.TotalViews,
+                c.VideoCount,
+                c.AvgViews,
+                c.AvgLikes,
+                c.AvgComments,
+                c.EngagementRate,
+                c.PublicEmail,
+                c.InstagramHandle,
+                c.TwitterHandle,
+                c.ChannelTags,
+                c.PublishedAt,
+                c.LastRefreshedAt,
+            })
+            .FirstOrDefaultAsync();
+
+        if (creator == null) return NotFound();
+
+        var videos = await _db.Videos
+            .Where(v => v.CreatorId == creatorId)
+            .OrderByDescending(v => v.PublishedAt)
+            .Take(10)
+            .Select(v => new {
+                v.VideoId,
+                v.Title,
+                v.ThumbnailUrl,
+                v.ViewCount,
+                v.LikeCount,
+                v.CommentCount,
+                v.EngagementRate,
+                v.PublishedAt,
+                v.Tags,
+            })
+            .ToListAsync();
+
+        return Ok(new { creator, videos });
+    }
+
+    /// <summary>
+    /// Returns distinct categories for all imported YouTube creators.
+    /// GET /api/discovery/youtube-creators/categories
+    /// </summary>
+    [HttpGet("youtube-creators/categories")]
+    public async Task<IActionResult> GetYouTubeCreatorCategories()
+    {
+        var cats = await _db.Creators
+            .Where(c => c.UserId == null && c.Category != null && c.Category != "")
+            .Select(c => c.Category!)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToListAsync();
+        return Ok(cats);
+    }
 }
