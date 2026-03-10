@@ -59,7 +59,7 @@ async function submit() {
     setAuth(payload.accessToken, auth.role, payload.refreshToken);
     router.push(homeRouteForRole(auth.role));
   } catch (err) {
-    error.value = err.response?.data?.error || err.response?.data || 'Login failed';
+    error.value = err.userMessage || err.response?.data?.error || 'Login failed';
   }
 }
 </script>

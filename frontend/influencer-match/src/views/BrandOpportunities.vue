@@ -264,7 +264,7 @@ async function findOpportunities() {
     })
     results.value = res.data
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Failed to load opportunities.'
+    error.value = e?.userMessage || e?.response?.data?.message || 'Failed to load opportunities.'
   } finally {
     loading.value = false
   }

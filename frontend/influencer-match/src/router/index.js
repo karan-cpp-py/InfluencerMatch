@@ -42,6 +42,11 @@ const routes = [
     component: () => import('../views/CreatorOnboardingView.vue'),
     meta: { requiresAuth: true, role: 'Creator' }
   },
+  {
+    path: '/creator/latest-video-analysis',
+    component: () => import('../views/LatestVideoAnalysisView.vue'),
+    meta: { requiresAuth: true, role: 'Creator' }
+  },
 
   {
     path: '/brand/waitlist',
@@ -65,6 +70,7 @@ const routes = [
   { path: '/creators/search',      component: () => import('../views/CreatorSearch.vue'),       meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/creator/:id/analytics',       component: () => import('../views/CreatorAnalyticsView.vue'),  meta: { requiresAuth: true } },
   { path: '/creator/:id/video-analytics', component: () => import('../views/VideoAnalyticsView.vue'),     meta: { requiresAuth: true } },
+  { path: '/creator/:id/latest-video-analysis', component: () => import('../views/LatestVideoAnalysisView.vue'), meta: { requiresAuth: true } },
   { path: '/creators/leaderboard', component: () => import('../views/ScoreLeaderboard.vue'),    meta: { requiresAuth: true } },
   { path: '/creators/compare',     component: () => import('../views/CreatorCompare.vue'),      meta: { requiresAuth: true } },
   {

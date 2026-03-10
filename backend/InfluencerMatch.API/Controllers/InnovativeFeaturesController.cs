@@ -14,19 +14,22 @@ namespace InfluencerMatch.API.Controllers
         private readonly ICampaignPredictionService _predictionService;
         private readonly ICreatorPricingService     _pricingService;
         private readonly IViralContentService       _viralService;
+        private readonly IYouTubeVideoAnalysisService _videoAnalysisService;
 
         public InnovativeFeaturesController(
             IRisingCreatorService      risingService,
             IBrandOpportunityService   opportunityService,
             ICampaignPredictionService predictionService,
             ICreatorPricingService     pricingService,
-            IViralContentService       viralService)
+            IViralContentService       viralService,
+            IYouTubeVideoAnalysisService videoAnalysisService)
         {
             _risingService      = risingService;
             _opportunityService = opportunityService;
             _predictionService  = predictionService;
             _pricingService     = pricingService;
             _viralService       = viralService;
+            _videoAnalysisService = videoAnalysisService;
         }
 
         // ── Feature 1: Rising Creator Detection ──────────────────────────────
@@ -103,6 +106,21 @@ namespace InfluencerMatch.API.Controllers
         {
             await _viralService.RefreshViralScoresAsync();
             return Ok(new { message = "Viral score refresh triggered successfully." });
+        }
+
+        // ── Feature: Single latest video AI analysis ───────────────────────
+        // POST /api/videos/latest-analysis
+
+        [HttpPost("videos/latest-analysis")]
+        public async Task<IActionResult> AnalyzeLatestVideo([FromBody] YouTubeVideoAnalysisRequestDto request)
+        {
+            if (request?.Video == null)
+            {
+                return BadRequest(new { error = "Video payload is required." });
+            }
+
+            var result = await _videoAnalysisService.AnalyzeLatestVideoAsync(request);
+            return Ok(result);
         }
     }
 }

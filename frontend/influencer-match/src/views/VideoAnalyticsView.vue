@@ -49,6 +49,9 @@
               <router-link :to="`/creator/${creatorId}/analytics`" class="btn btn-sm btn-outline-primary">
                 Channel Analytics
               </router-link>
+              <router-link :to="`/creator/${creatorId}/latest-video-analysis`" class="btn btn-sm btn-outline-dark">
+                AI Latest Video
+              </router-link>
             </div>
           </div>
         </div>
@@ -414,7 +417,7 @@ async function loadData() {
     const r = await api.get(`/creators/${creatorId}/video-analytics`);
     data.value = r.data;
   } catch (e) {
-    loadError.value = e.response?.data?.message || 'Failed to load video analytics.';
+    loadError.value = e.userMessage || e.response?.data?.message || 'Failed to load video analytics.';
   } finally {
     loading.value = false;
   }
@@ -429,7 +432,7 @@ async function doRefresh() {
     await loadData();
     setTimeout(() => { refreshMsg.value = ''; }, 4000);
   } catch (e) {
-    alert(e.response?.data?.error || e.response?.data?.message || 'Refresh failed.');
+    alert(e.userMessage || e.response?.data?.error || e.response?.data?.message || 'Refresh failed.');
   } finally {
     refreshing.value = false;
   }

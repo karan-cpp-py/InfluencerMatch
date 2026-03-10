@@ -134,7 +134,7 @@ async function submit() {
       router.push(homeRouteForRole(auth.role));
     }
   } catch (err) {
-    error.value = err.response?.data?.error || err.response?.data || 'Registration failed';
+    error.value = err.userMessage || err.response?.data?.error || 'Registration failed';
   }
 }
 </script>

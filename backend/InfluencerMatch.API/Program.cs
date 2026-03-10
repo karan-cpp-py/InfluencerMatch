@@ -77,6 +77,7 @@ builder.Services.AddScoped<ICollaborationService,       InfluencerMatch.Infrastr
 builder.Services.AddScoped<INotificationService,        InfluencerMatch.Infrastructure.Services.NotificationService>();
 // Feature 8: Video Analytics + Brand Collaboration Detection
 builder.Services.AddScoped<IVideoAnalyticsService,      InfluencerMatch.Infrastructure.Services.VideoAnalyticsService>();
+builder.Services.AddScoped<IYouTubeVideoAnalysisService, InfluencerMatch.Infrastructure.Services.YouTubeVideoAnalysisService>();
 // AddHostedService<CreatorStatsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 // AddHostedService<VideoMetricsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 
@@ -242,7 +243,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.UseHttpsRedirection();
 }
 app.UseMiddleware<CorrelationLoggingMiddleware>();
 
@@ -258,6 +258,9 @@ app.UseMiddleware<WorkspaceRbacMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await db.Database.MigrateAsync();
+
     var planService = scope.ServiceProvider.GetRequiredService<ISubscriptionPlanService>();
     await planService.SeedDefaultPlansAsync();
 }

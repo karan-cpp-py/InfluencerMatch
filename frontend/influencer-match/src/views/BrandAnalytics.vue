@@ -431,7 +431,7 @@ async function loadVideoAnalytics() {
     const r = await api.get(`/brands/${encodeURIComponent(brand)}/creators`);
     vaData.value = r.data;
   } catch (e) {
-    vaError.value = e.response?.data?.message || 'Failed to load video analytics data.';
+    vaError.value = e.userMessage || e.response?.data?.message || 'Failed to load video analytics data.';
   } finally {
     vaLoading.value = false;
   }
@@ -448,7 +448,7 @@ async function analyze() {
     const r = await api.get(`/brands/${encodeURIComponent(brand)}/analytics`);
     analytics.value = r.data;
   } catch (e) {
-    error.value = e.response?.data?.message || e.response?.data || 'Failed to load brand analytics.';
+    error.value = e.userMessage || e.response?.data?.message || 'Failed to load brand analytics.';
   } finally {
     loading.value = false;
   }

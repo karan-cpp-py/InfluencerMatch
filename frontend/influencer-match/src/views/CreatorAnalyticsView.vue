@@ -47,6 +47,7 @@
                 Refresh
               </button>
               <router-link :to="`/creator/${creatorId}/video-analytics`" class="btn btn-sm btn-outline-primary">📊 Video Analytics</router-link>
+              <router-link :to="`/creator/${creatorId}/latest-video-analysis`" class="btn btn-sm btn-outline-dark">AI Latest Video</router-link>
               <router-link :to="`/creators/compare?creatorId1=${creatorId}`" class="btn btn-sm btn-outline-secondary">Compare ⇄</router-link>
               <a v-if="data.channelId" :href="`https://youtube.com/channel/${data.channelId}`" target="_blank"
                 class="btn btn-sm btn-outline-danger">YouTube ↗</a>
@@ -339,7 +340,7 @@ async function fetchData() {
     const r = await api.get(`/creators/${creatorId}/analytics`);
     data.value = r.data;
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to load analytics.';
+    error.value = e.userMessage || e.response?.data?.message || 'Failed to load analytics.';
   } finally {
     loading.value = false;
   }
@@ -351,7 +352,7 @@ async function refreshAnalytics() {
     await api.post(`/creators/${creatorId}/analytics/refresh`);
     await fetchData();
   } catch (e) {
-    alert(e.response?.data?.message || 'Refresh failed.');
+    alert(e.userMessage || e.response?.data?.message || 'Refresh failed.');
   } finally {
     refreshing.value = false;
   }
@@ -372,7 +373,7 @@ async function refreshScore() {
     const r = await api.post(`/creators/${creatorId}/score/refresh`);
     score.value = r.data;
   } catch (e) {
-    alert(e.response?.data?.message || 'Score calculation failed.');
+    alert(e.userMessage || e.response?.data?.message || 'Score calculation failed.');
   } finally { scoreRefreshing.value = false; }
 }
 

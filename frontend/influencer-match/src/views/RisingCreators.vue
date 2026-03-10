@@ -268,7 +268,7 @@ async function fetchRising() {
     const res = await api.get('/creators/rising', { params })
     creators.value = res.data
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Failed to load rising creators.'
+    error.value = e?.userMessage || e?.response?.data?.message || 'Failed to load rising creators.'
   } finally {
     loading.value = false
   }

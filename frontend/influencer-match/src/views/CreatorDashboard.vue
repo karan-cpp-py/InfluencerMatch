@@ -12,6 +12,12 @@
           <span v-if="channel" class="status-pill linked">Channel linked</span>
           <span v-else class="status-pill pending">Channel not linked</span>
           <span class="status-pill soft">Profile {{ profileStrength }}% complete</span>
+          <router-link
+            to="/creator/latest-video-analysis"
+            class="btn btn-sm btn-light fw-semibold"
+          >
+            AI Latest Video
+          </router-link>
         </div>
       </section>
 
@@ -426,7 +432,7 @@ async function linkChannel() {
     const vRes = await api.get('/creator/dashboard');
     recentVideos.value = vRes.data.recentVideos || [];
   } catch (e) {
-    linkError.value = e.response?.data?.error || e.response?.data || 'Failed to link channel. Check the URL and try again.';
+    linkError.value = e.userMessage || e.response?.data?.error || 'Failed to link channel. Check the URL and try again.';
   } finally {
     linkingChannel.value = false;
   }
