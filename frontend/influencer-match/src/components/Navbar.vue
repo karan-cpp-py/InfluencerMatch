@@ -27,10 +27,10 @@
           <li class="nav-item">
             <router-link class="nav-link" to="/">Home</router-link>
           </li>
-          <li class="nav-item">
+          <li v-if="!token" class="nav-item">
             <router-link class="nav-link" to="/plans">Plans</router-link>
           </li>
-          <li class="nav-item">
+          <li v-if="!token" class="nav-item">
             <router-link class="nav-link" :to="{ path: '/plans', hash: '#book-demo' }">Book Demo</router-link>
           </li>
 
@@ -58,20 +58,26 @@
           <!-- Customer links (Brand / Agency / Individual / CreatorManager) -->
           <template v-if="token && customerUserRoles.includes(role)">
 
-            <!-- Marketplace -->
-            <li class="nav-item" v-if="platformConfig.features.enableMarketplace">
-              <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
-            </li>
-
-            <!-- Campaigns dropdown (Brand / Agency only, behind feature flag) -->
-            <li class="nav-item dropdown" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+            <!-- Workbench: campaign/team/ops actions in one place -->
+            <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                Campaigns
+                Workbench
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
-                <li><router-link class="dropdown-item" to="/brand">✏️ Create Campaign</router-link></li>
-                <li><router-link class="dropdown-item" to="/brand/campaigns">📋 My Campaigns</router-link></li>
-                <li><router-link class="dropdown-item" to="/brand/campaign-onboarding">🧭 Campaign Wizard</router-link></li>
+                <li v-if="platformConfig.features.enableMarketplace">
+                  <router-link class="dropdown-item" to="/marketplace">🏬 Marketplace</router-link>
+                </li>
+                <template v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+                  <li><router-link class="dropdown-item" to="/brand">✏️ Create Campaign</router-link></li>
+                  <li><router-link class="dropdown-item" to="/brand/campaigns">📋 My Campaigns</router-link></li>
+                  <li><router-link class="dropdown-item" to="/brand/campaign-onboarding">🧭 Campaign Wizard</router-link></li>
+                </template>
+                <li v-if="brandOpsRoles.includes(role)">
+                  <router-link class="dropdown-item" to="/workspace/team">👥 Team Workspace</router-link>
+                </li>
+                <li v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation">
+                  <router-link class="dropdown-item" to="/brand/waitlist">📋 Brand Waitlist</router-link>
+                </li>
               </ul>
             </li>
 
@@ -82,11 +88,8 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
                 <li><router-link class="dropdown-item" to="/brand/youtube-creators">📺 YouTube Catalogue</router-link></li>
-                <li><router-link class="dropdown-item" to="/discovery">🔍 Creator Discovery</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/search">🔎 Creator Search</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/rising">🚀 Rising Creators</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/leaderboard">🏆 Leaderboard</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/compare">⚖️ Compare Creators</router-link></li>
                 <li><router-link class="dropdown-item" to="/videos/trending">🔥 Trending Videos</router-link></li>
                 <template v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
                   <li><hr class="dropdown-divider"/></li>
@@ -94,11 +97,6 @@
                   <li><router-link class="dropdown-item" to="/brand/opportunities">💡 Opportunities</router-link></li>
                 </template>
               </ul>
-            </li>
-
-            <!-- Team Workspace (Brand / Agency) -->
-            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
-              <router-link class="nav-link" to="/workspace/team">Team</router-link>
             </li>
 
           </template>
@@ -122,11 +120,7 @@
               <template v-if="customerUserRoles.includes(role)">
                 <li><router-link class="dropdown-item" to="/subscriptions">💳 Subscription</router-link></li>
                 <li><router-link class="dropdown-item" to="/notifications">🔔 Notifications</router-link></li>
-                <li><router-link class="dropdown-item" to="/onboarding">🚀 Onboarding</router-link></li>
-                <li><router-link class="dropdown-item" to="/dashboard-config">⚙️ Dashboard Config</router-link></li>
-                <li v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation">
-                  <router-link class="dropdown-item" to="/brand/waitlist">📋 Brand Waitlist</router-link>
-                </li>
+                <li><router-link class="dropdown-item" to="/dashboard-config">⚙️ Dashboard</router-link></li>
                 <li><hr class="dropdown-divider"/></li>
               </template>
               <!-- Creator account items -->
