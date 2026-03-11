@@ -42,16 +42,12 @@
             <router-link class="nav-link" to="/register">Register</router-link>
           </li>
 
-          <!-- Creator (self-registered) links -->
+          <!-- Creator links -->
           <li v-if="token && role === 'Creator'" class="nav-item">
-            <router-link class="nav-link" to="/creator/onboarding">
-              Onboarding
-            </router-link>
+            <router-link class="nav-link" to="/creator-dashboard">My Dashboard</router-link>
           </li>
           <li v-if="token && role === 'Creator'" class="nav-item">
-            <router-link class="nav-link" to="/creator-dashboard">
-              My Dashboard
-            </router-link>
+            <router-link class="nav-link" to="/creator/latest-video-analysis">Video Analysis</router-link>
           </li>
 
           <!-- SuperAdmin links -->
@@ -59,72 +55,91 @@
             <router-link class="nav-link fw-semibold" to="/admin">⚙️ Admin Panel</router-link>
           </li>
 
-          <!-- Legacy Influencer links -->
-          <li v-if="token && role === 'Influencer'" class="nav-item">
-            <router-link class="nav-link" to="/influencer">My Profile</router-link>
-          </li>
-          <li v-if="token && role === 'Influencer'" class="nav-item">
-            <router-link class="nav-link" to="/campaigns">Browse Campaigns</router-link>
-          </li>
-
-          <!-- Customer links -->
+          <!-- Customer links (Brand / Agency / Individual / CreatorManager) -->
           <template v-if="token && customerUserRoles.includes(role)">
+
+            <!-- Marketplace -->
             <li class="nav-item" v-if="platformConfig.features.enableMarketplace">
-              <router-link class="nav-link" to="/marketplace">🔍 Marketplace</router-link>
+              <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
             </li>
-            <li class="nav-item" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
-              <router-link class="nav-link" to="/brand">Create Campaign</router-link>
+
+            <!-- Campaigns dropdown (Brand / Agency only, behind feature flag) -->
+            <li class="nav-item dropdown" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Campaigns
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><router-link class="dropdown-item" to="/brand">✏️ Create Campaign</router-link></li>
+                <li><router-link class="dropdown-item" to="/brand/campaigns">📋 My Campaigns</router-link></li>
+                <li><router-link class="dropdown-item" to="/brand/campaign-onboarding">🧭 Campaign Wizard</router-link></li>
+              </ul>
             </li>
-            <li class="nav-item" v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
-              <router-link class="nav-link" to="/brand/campaigns">My Campaigns</router-link>
-            </li>
-            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
-              <router-link class="nav-link" to="/workspace/team">Team Workspace</router-link>
-            </li>
-            <li class="nav-item" v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation">
-              <router-link class="nav-link" to="/brand/waitlist">Brand Waitlist</router-link>
-            </li>
-            <li class="nav-item">
-              <router-link class="nav-link" to="/dashboard-config">Dashboard Config</router-link>
-            </li>
-            <li class="nav-item">
-              <router-link class="nav-link" to="/onboarding">Onboarding</router-link>
-            </li>
-            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
-              <router-link class="nav-link" to="/brand/campaign-onboarding">Campaign Wizard</router-link>
-            </li>
-            <li class="nav-item">
-              <router-link class="nav-link" to="/subscriptions">Subscription</router-link>
-            </li>
-            <li class="nav-item">
-              <router-link class="nav-link" to="/notifications">Notifications</router-link>
-            </li>
+
+            <!-- Discover dropdown -->
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                 Discover
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
-                <li><router-link class="dropdown-item" to="/brand/youtube-creators">YouTube Creator Catalogue</router-link></li>
-                <li><router-link class="dropdown-item" to="/discovery">Creator Discovery</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/search">Creator Search</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/rising">Rising Creators</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/leaderboard">Leaderboard</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/compare">Compare</router-link></li>
-                <li><hr class="dropdown-divider"/></li>
-                <li v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/analytics">Brand Analytics</router-link></li>
-                <li v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/opportunities">Opportunities</router-link></li>
-                <li v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation"><router-link class="dropdown-item" to="/brand/waitlist">Brand Activation Waitlist</router-link></li>
-                <li><router-link class="dropdown-item" to="/videos/trending">Trending Videos</router-link></li>
+                <li><router-link class="dropdown-item" to="/brand/youtube-creators">📺 YouTube Catalogue</router-link></li>
+                <li><router-link class="dropdown-item" to="/discovery">🔍 Creator Discovery</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/search">🔎 Creator Search</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/rising">🚀 Rising Creators</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/leaderboard">🏆 Leaderboard</router-link></li>
+                <li><router-link class="dropdown-item" to="/creators/compare">⚖️ Compare Creators</router-link></li>
+                <li><router-link class="dropdown-item" to="/videos/trending">🔥 Trending Videos</router-link></li>
+                <template v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
+                  <li><hr class="dropdown-divider"/></li>
+                  <li><router-link class="dropdown-item" to="/brand/analytics">📊 Brand Analytics</router-link></li>
+                  <li><router-link class="dropdown-item" to="/brand/opportunities">💡 Opportunities</router-link></li>
+                </template>
               </ul>
             </li>
+
+            <!-- Team Workspace (Brand / Agency) -->
+            <li class="nav-item" v-if="brandOpsRoles.includes(role)">
+              <router-link class="nav-link" to="/workspace/team">Team</router-link>
+            </li>
+
           </template>
         </ul>
 
+        <!-- Right side: notification bell + account dropdown -->
         <div v-if="token" class="d-flex align-items-center gap-2 nav-user-tools">
           <NotificationBell />
-          <span class="badge rounded-pill text-bg-light text-dark fw-semibold">{{ role }}</span>
-          <span class="navbar-text text-white-50 small d-none d-md-inline">{{ userName }}</span>
-          <button class="btn btn-sm btn-light fw-semibold" @click="logout">Logout</button>
+          <div class="dropdown">
+            <button
+              class="btn btn-sm btn-outline-light dropdown-toggle d-flex align-items-center gap-2"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <span class="fw-semibold d-none d-md-inline text-truncate" style="max-width:120px">{{ userName }}</span>
+              <span class="badge rounded-pill text-bg-light text-dark" style="font-size:0.62rem">{{ role }}</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+              <!-- Customer account items -->
+              <template v-if="customerUserRoles.includes(role)">
+                <li><router-link class="dropdown-item" to="/subscriptions">💳 Subscription</router-link></li>
+                <li><router-link class="dropdown-item" to="/notifications">🔔 Notifications</router-link></li>
+                <li><router-link class="dropdown-item" to="/onboarding">🚀 Onboarding</router-link></li>
+                <li><router-link class="dropdown-item" to="/dashboard-config">⚙️ Dashboard Config</router-link></li>
+                <li v-if="brandOpsRoles.includes(role) && !platformConfig.features.enableBrandActivation">
+                  <router-link class="dropdown-item" to="/brand/waitlist">📋 Brand Waitlist</router-link>
+                </li>
+                <li><hr class="dropdown-divider"/></li>
+              </template>
+              <!-- Creator account items -->
+              <template v-if="role === 'Creator'">
+                <li><router-link class="dropdown-item" to="/subscriptions">💳 Subscription</router-link></li>
+                <li><router-link class="dropdown-item" to="/creator/onboarding">🚀 Onboarding</router-link></li>
+                <li><hr class="dropdown-divider"/></li>
+              </template>
+              <li>
+                <button class="dropdown-item text-danger fw-semibold" @click="logout">🚪 Logout</button>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

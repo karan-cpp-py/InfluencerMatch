@@ -69,29 +69,32 @@
       </div>
 
       <div class="card border-0 p-4 text-center">
-        <p v-if="!token" class="mb-3">Get started by registering or logging in.</p>
+        <p v-if="!token" class="mb-3">Get started — register as a Brand, Agency, or Creator.</p>
+        <div v-if="!token" class="d-flex flex-wrap justify-content-center gap-2">
+          <router-link class="btn btn-primary" to="/register">Create Account</router-link>
+          <router-link class="btn btn-outline-secondary" to="/login">Login</router-link>
+          <router-link class="btn btn-outline-light" to="/plans">View Plans</router-link>
+        </div>
         <div v-else>
           <p class="mb-3">Welcome back!</p>
-          <div v-if="role === 'Influencer'">
-            <router-link class="btn btn-primary me-2" to="/influencer">My Profile</router-link>
-            <router-link class="btn btn-secondary" to="/campaigns">Browse Campaigns</router-link>
-          </div>
-          <div v-else-if="['Brand', 'Agency'].includes(role)">
+          <div v-if="['Brand', 'Agency'].includes(role)">
             <router-link v-if="platformConfig.features.enableBrandActivation" class="btn btn-primary me-2" to="/brand">Create Campaign</router-link>
             <router-link v-if="platformConfig.features.enableBrandActivation" class="btn btn-secondary me-2" to="/brand/campaigns">My Campaigns</router-link>
             <router-link v-if="platformConfig.features.enableMarketplace" class="btn btn-info text-white me-2" to="/marketplace">Marketplace</router-link>
+            <router-link class="btn btn-outline-primary me-2" to="/brand/youtube-creators">YouTube Catalogue</router-link>
             <router-link v-if="!platformConfig.features.enableBrandActivation" class="btn btn-warning me-2" to="/brand/waitlist">Join Brand Waitlist</router-link>
-            <router-link class="btn btn-outline-primary me-2" to="/subscriptions">Subscription</router-link>
-            <router-link class="btn btn-outline-secondary" to="/dashboard-config">Dashboard Config</router-link>
           </div>
           <div v-else-if="['Individual', 'CreatorManager'].includes(role)">
+            <router-link class="btn btn-primary me-2" to="/brand/youtube-creators">YouTube Catalogue</router-link>
             <router-link class="btn btn-info text-white me-2" to="/creators/search">Creator Search</router-link>
             <router-link class="btn btn-outline-primary me-2" to="/subscriptions">Subscription</router-link>
-            <router-link class="btn btn-outline-secondary" to="/dashboard-config">Dashboard Config</router-link>
           </div>
           <div v-else-if="role === 'Creator'">
             <router-link class="btn btn-outline-primary me-2" to="/creator/onboarding">Onboarding</router-link>
             <router-link class="btn btn-primary me-2" to="/creator-dashboard">My Dashboard</router-link>
+          </div>
+          <div v-else-if="role === 'SuperAdmin'">
+            <router-link class="btn btn-primary" to="/admin">Admin Panel</router-link>
           </div>
         </div>
       </div>
