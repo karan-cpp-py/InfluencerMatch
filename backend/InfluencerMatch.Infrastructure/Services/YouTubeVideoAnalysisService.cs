@@ -58,6 +58,15 @@ namespace InfluencerMatch.Infrastructure.Services
         private record YtTopLevelComment(YtTopLevelCommentSnippet? snippet);
         private record YtTopLevelCommentSnippet(string? authorDisplayName, string? textOriginal, long? likeCount, DateTime? publishedAt);
         private record PageInfo(int? totalResults, int? resultsPerPage);
+        private record YtSearchResponse(List<YtSearchItem>? items);
+        private record YtSearchItem(YtSearchId? id);
+        private record YtSearchId(string? videoId);
+        private record YtVideosResponse(List<YtVideoItem>? items);
+        private record YtVideoItem(string? id, YtVideoSnippet? snippet, YtVideoContentDetails? contentDetails, YtVideoStatistics? statistics, YtVideoStatus? status);
+        private record YtVideoSnippet(string? title, string? description, List<string>? tags, string? categoryId, DateTime? publishedAt, string? defaultLanguage, string? defaultAudioLanguage);
+        private record YtVideoContentDetails(string? duration, bool? madeForKids);
+        private record YtVideoStatistics(string? viewCount, string? likeCount, string? commentCount, string? favoriteCount);
+        private record YtVideoStatus(bool? madeForKids);
 
         public YouTubeVideoAnalysisService(
             IHttpClientFactory http,
@@ -80,6 +89,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
             var inputComments = request.Comments ?? new List<YouTubeCommentDto>();
             var comments = inputComments;
+            var resolvedVideoId = video.VideoId;
 
             var maxFetch = Math.Clamp(request.MaxCommentsToFetch <= 0 ? 500 : request.MaxCommentsToFetch, 50, 2000);
             var commentFetchMeta = new
@@ -96,12 +106,32 @@ namespace InfluencerMatch.Infrastructure.Services
                     : "No comments provided; comment-level NLP is limited until comments are fetched or passed in payload."
             };
 
-            if ((comments == null || comments.Count == 0)
+            if (string.IsNullOrWhiteSpace(resolvedVideoId)
                 && request.AutoFetchComments
-                && !string.IsNullOrWhiteSpace(video.VideoId)
+                && IsApiKeyConfigured()
+                && !string.IsNullOrWhiteSpace(request.ChannelId))
+            {
+                resolvedVideoId = await ResolveLatestVideoIdByChannelIdAsync(request.ChannelId!);
+                if (!string.IsNullOrWhiteSpace(resolvedVideoId))
+                {
+                    video.VideoId = resolvedVideoId;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedVideoId)
+                && request.AutoFetchComments
                 && IsApiKeyConfigured())
             {
-                var fetched = await FetchCommentsForVideoAsync(video.VideoId!, maxFetch);
+                await EnrichVideoFromYouTubeAsync(video, resolvedVideoId!);
+                stats = video.Statistics ?? new YouTubeVideoStatisticsDto();
+            }
+
+            if ((comments == null || comments.Count == 0)
+                && request.AutoFetchComments
+                && !string.IsNullOrWhiteSpace(resolvedVideoId)
+                && IsApiKeyConfigured())
+            {
+                var fetched = await FetchCommentsForVideoAsync(resolvedVideoId!, maxFetch);
                 comments = fetched.Comments;
                 commentFetchMeta = new
                 {
@@ -112,7 +142,7 @@ namespace InfluencerMatch.Infrastructure.Services
                     total_comment_count = fetched.TotalResults ?? stats.CommentCount,
                     fetched_all = fetched.FetchedAll,
                     capped = fetched.Capped,
-                    note = fetched.Note
+                    note = fetched.Note + (video.VideoId == resolvedVideoId ? " (videoId auto-resolved from channelId)" : string.Empty)
                 };
             }
 
@@ -122,6 +152,49 @@ namespace InfluencerMatch.Infrastructure.Services
             var allEvidenceText = string.Join("\n", new[] { title, description, string.Join(" ", tags) }.Where(x => !string.IsNullOrWhiteSpace(x))).ToLowerInvariant();
 
             var normalizedComments = comments ?? new List<YouTubeCommentDto>();
+
+            // ── NLP primitives (used by both comment intelligence & recommendations) ──
+            var commentTexts = normalizedComments
+                .Select(c => c.TextOriginal ?? string.Empty)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .ToList();
+            int nlpPos = 0, nlpNeg = 0;
+            foreach (var t in commentTexts.Select(x => x.ToLowerInvariant()))
+            {
+                var s = ScoreTextSentiment(t);
+                if (s > 0.35) nlpPos++;
+                else if (s < -0.35) nlpNeg++;
+            }
+            var nlpTotal = Math.Max(1, commentTexts.Count);
+            var nlpPosPct = commentTexts.Count > 0 ? (int)Math.Round(nlpPos * 100.0 / nlpTotal) : 0;
+            var nlpNegPct = commentTexts.Count > 0 ? (int)Math.Round(nlpNeg * 100.0 / nlpTotal) : 0;
+            var nlpSentiment = commentTexts.Count == 0
+                ? "insufficient"
+                : nlpPosPct >= 60 ? "positive" : nlpNegPct >= 40 ? "negative" : "mixed";
+            var nlpThemes = commentTexts.Count > 0 ? ExtractThemes(commentTexts).Take(5).ToList() : new List<string>();
+            var nlpHasQuestions = commentTexts.Any(t => t.Contains('?'));
+            var nlpProfanity = commentTexts.Any(t => ProfanityWords.Any(p => t.Contains(p, StringComparison.OrdinalIgnoreCase)));
+
+            // ── Collab status (for recommendations) ──
+            bool recConfirmedCollab = ConfirmedCollabKeywords.Any(k => allEvidenceText.Contains(k, StringComparison.OrdinalIgnoreCase));
+            int recLikelySignals = LikelyCollabKeywords.Count(k => allEvidenceText.Contains(k, StringComparison.OrdinalIgnoreCase))
+                + (Regex.IsMatch(description, @"https?://", RegexOptions.IgnoreCase) ? 1 : 0)
+                + (tags.Any(t => t.StartsWith("#ad", StringComparison.OrdinalIgnoreCase) || t.StartsWith("#sponsored", StringComparison.OrdinalIgnoreCase)) ? 1 : 0);
+            var recCollabStatus = recConfirmedCollab ? "Confirmed"
+                : recLikelySignals >= 2 ? "Likely"
+                : recLikelySignals == 1 ? "Unclear"
+                : "No evidence";
+
+            // ── Engagement ratios (for recommendations) ──
+            var recViews = stats.ViewCount;
+            var recLikes = stats.LikeCount;
+            var recComments = stats.CommentCount;
+            double? recLikeView = recViews.HasValue && recViews > 0 && recLikes.HasValue
+                ? Math.Round((double)recLikes.Value / recViews.Value, 4) : null;
+            double? recCommentView = recViews.HasValue && recViews > 0 && recComments.HasValue
+                ? Math.Round((double)recComments.Value / recViews.Value, 4) : null;
+
+            bool enrichedFromYouTube = !string.IsNullOrWhiteSpace(resolvedVideoId) && IsApiKeyConfigured();
 
             var collaboration = DetectCollaboration(allEvidenceText, description, tags, normalizedComments);
             var growth = BuildGrowth(stats, request.TimeSeries);
@@ -147,27 +220,14 @@ namespace InfluencerMatch.Infrastructure.Services
                 }
             };
 
-            var recommendations = new
-            {
-                for_creator = new[]
-                {
-                    "Reply to top audience questions within 24 hours to improve community trust and comment depth.",
-                    "Test stronger first-20-second hooks and compare retention on the next 3 uploads.",
-                    "If collaboration content is used, add clear and early disclosure language in title/description.",
-                    "Use comment themes to plan next upload topics and add a direct CTA for suggested topics.",
-                    "Track 24h and 7d performance versus your own channel baseline before changing format."
-                },
-                for_brands_agencies = new[]
-                {
-                    "Request 3-month channel baseline metrics before deal finalization.",
-                    "Use integrated mention format first, then scale to dedicated videos if audience response is positive.",
-                    "Align campaign CTA with audience questions/themes already present in comments.",
-                    "Verify disclosure language and destination links in description before campaign goes live.",
-                    "Include post-campaign measurement plan: view quality, comment quality, and CTA conversions."
-                }
-            };
-
             var missingDataChecklist = BuildMissingChecklist(video, request.ChannelContext, normalizedComments, request.TimeSeries);
+
+            var recommendations = BuildRecommendations(
+                recCollabStatus,
+                recViews, recLikes, recComments,
+                recLikeView, recCommentView,
+                nlpSentiment, nlpThemes, nlpHasQuestions, nlpProfanity,
+                commentTexts.Count, missingDataChecklist, video, request.ChannelContext);
 
             var uiIdeas = new[]
             {
@@ -190,7 +250,8 @@ namespace InfluencerMatch.Infrastructure.Services
                 brand_agency_readout = brandReadout,
                 recommendations = recommendations,
                 missing_data_checklist = missingDataChecklist,
-                ui_widget_ideas = uiIdeas
+                ui_widget_ideas = uiIdeas,
+                enriched_from_youtube = enrichedFromYouTube
             };
 
             return output;
@@ -290,12 +351,14 @@ namespace InfluencerMatch.Infrastructure.Services
 
         private static object BuildGrowth(YouTubeVideoStatisticsDto stats, List<YouTubeTimeSeriesPointDto> timeSeries)
         {
-            var views = stats.ViewCount ?? 0;
-            var likes = stats.LikeCount ?? 0;
-            var comments = stats.CommentCount ?? 0;
+            long? views = stats.ViewCount;
+            long? likes = stats.LikeCount;
+            long? comments = stats.CommentCount;
 
-            var likeView = views > 0 ? Math.Round((double)likes / views, 4) : 0;
-            var commentView = views > 0 ? Math.Round((double)comments / views, 4) : 0;
+            double? likeView = views.HasValue && views > 0 && likes.HasValue
+                ? Math.Round((double)likes.Value / views.Value, 4) : null;
+            double? commentView = views.HasValue && views > 0 && comments.HasValue
+                ? Math.Round((double)comments.Value / views.Value, 4) : null;
 
             if (timeSeries == null || timeSeries.Count < 2)
             {
@@ -538,6 +601,80 @@ namespace InfluencerMatch.Infrastructure.Services
             }
         }
 
+        private async Task<string?> ResolveLatestVideoIdByChannelIdAsync(string channelId)
+        {
+            try
+            {
+                var http = _http.CreateClient();
+                var url = "https://www.googleapis.com/youtube/v3/search"
+                    + "?part=snippet"
+                    + "&type=video"
+                    + "&order=date"
+                    + "&maxResults=1"
+                    + $"&channelId={Uri.EscapeDataString(channelId)}"
+                    + $"&key={Uri.EscapeDataString(_apiKey!)}";
+
+                var resp = await http.GetFromJsonAsync<YtSearchResponse>(url);
+                var videoId = resp?.items?.FirstOrDefault()?.id?.videoId;
+                return string.IsNullOrWhiteSpace(videoId) ? null : videoId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve latest videoId for channel {ChannelId}", channelId);
+                return null;
+            }
+        }
+
+        private async Task EnrichVideoFromYouTubeAsync(YouTubeVideoDto video, string videoId)
+        {
+            try
+            {
+                var http = _http.CreateClient();
+                var url = "https://www.googleapis.com/youtube/v3/videos"
+                    + "?part=snippet,contentDetails,statistics,status"
+                    + $"&id={Uri.EscapeDataString(videoId)}"
+                    + $"&key={Uri.EscapeDataString(_apiKey!)}";
+
+                var resp = await http.GetFromJsonAsync<YtVideosResponse>(url);
+                var item = resp?.items?.FirstOrDefault();
+                if (item == null) return;
+
+                var snippet = item.snippet;
+                var details = item.contentDetails;
+                var ytStats = item.statistics;
+
+                if (string.IsNullOrWhiteSpace(video.VideoId)) video.VideoId = item.id;
+                if (string.IsNullOrWhiteSpace(video.Title) || video.Title.StartsWith("Latest upload by", StringComparison.OrdinalIgnoreCase))
+                    video.Title = snippet?.title ?? video.Title;
+                if (string.IsNullOrWhiteSpace(video.Description) || video.Description.StartsWith("Auto-generated", StringComparison.OrdinalIgnoreCase))
+                    video.Description = snippet?.description ?? video.Description;
+                if ((video.Tags == null || video.Tags.Count == 0) && snippet?.tags != null)
+                    video.Tags = snippet.tags;
+                if (string.IsNullOrWhiteSpace(video.CategoryId)) video.CategoryId = snippet?.categoryId;
+                if (!video.PublishedAt.HasValue) video.PublishedAt = snippet?.publishedAt;
+                if (string.IsNullOrWhiteSpace(video.Duration)) video.Duration = details?.duration;
+                if (!video.MadeForKids.HasValue && item.status?.madeForKids.HasValue == true) video.MadeForKids = item.status.madeForKids;
+                if (string.IsNullOrWhiteSpace(video.DefaultLanguage)) video.DefaultLanguage = snippet?.defaultLanguage;
+                if (string.IsNullOrWhiteSpace(video.DefaultAudioLanguage)) video.DefaultAudioLanguage = snippet?.defaultAudioLanguage;
+
+                video.Statistics ??= new YouTubeVideoStatisticsDto();
+                if (!video.Statistics.ViewCount.HasValue) video.Statistics.ViewCount = ParseNullableLong(ytStats?.viewCount);
+                if (!video.Statistics.LikeCount.HasValue) video.Statistics.LikeCount = ParseNullableLong(ytStats?.likeCount);
+                if (!video.Statistics.CommentCount.HasValue) video.Statistics.CommentCount = ParseNullableLong(ytStats?.commentCount);
+                if (!video.Statistics.FavoriteCount.HasValue) video.Statistics.FavoriteCount = ParseNullableLong(ytStats?.favoriteCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enrich video metadata for videoId {VideoId}", videoId);
+            }
+        }
+
+        private static long? ParseNullableLong(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            return long.TryParse(value, out var parsed) ? parsed : null;
+        }
+
         private bool IsApiKeyConfigured()
         {
             if (string.IsNullOrWhiteSpace(_apiKey)) return false;
@@ -619,6 +756,140 @@ namespace InfluencerMatch.Infrastructure.Services
             if (comments == null || comments.Count < 20) missing.Add("Low comment sample (recommend >=20 for stable sentiment)");
             if (series == null || series.Count < 2) missing.Add("No time-series points for growth velocity analysis");
             return missing;
+        }
+
+        private static object BuildRecommendations(
+            string collabStatus,
+            long? views, long? likes, long? commentCount,
+            double? likeView, double? commentView,
+            string sentiment,
+            List<string> themes,
+            bool hasQuestions,
+            bool profanityDetected,
+            int sampleSize,
+            List<string> missingData,
+            YouTubeVideoDto video,
+            YouTubeChannelContextDto? channel)
+        {
+            var forCreator = new List<string>();
+            var forBrands = new List<string>();
+
+            // ── Engagement ratios ──
+            if (views.HasValue && views > 0)
+            {
+                if (likeView.HasValue && likeView >= 0.04)
+                    forCreator.Add($"Strong like rate ({likeView.Value:P1} likes/view) — maintain this content format and use it as your engagement benchmark.");
+                else if (likeView.HasValue && likeView > 0 && likeView < 0.02)
+                    forCreator.Add($"Like rate is {likeView.Value:P2} — add a clear like prompt in the first 30 seconds or mid-roll to lift engagement.");
+                else if (!likeView.HasValue || likeView == 0)
+                    forCreator.Add("Like count is unavailable — confirm likes are enabled in YouTube Studio channel settings.");
+
+                if (commentView.HasValue && commentView >= 0.005)
+                    forCreator.Add($"Good comment participation ({commentView.Value:P2} comments/view) — reply to top threads within 24 h to sustain momentum.");
+                else if (commentView.HasValue && commentView > 0 && commentView < 0.005)
+                    forCreator.Add("Comment rate is below 0.5% — end your video with a direct discussion question to drive reply volume.");
+                else if (commentCount.HasValue && commentCount > 0 && sampleSize > 0)
+                    forCreator.Add("Comments are active — pin a comment CTA to direct viewers toward your next video or community post.");
+            }
+            else
+            {
+                forCreator.Add("View count data is not available for this video — ensure the channel is public and the YouTube API key is configured.");
+            }
+
+            // ── Scale context for brands ──
+            if (views.HasValue)
+            {
+                long v = views.Value;
+                if (v < 1_000)
+                    forBrands.Add("View count under 1 K — suitable for hyper-niche micro-influencer campaigns only; validate audience-fit before committing budget.");
+                else if (v < 10_000)
+                    forBrands.Add($"Reach of {v:N0} views (micro tier) — integrated mention format works best; track comment engagement closely.");
+                else if (v < 100_000)
+                    forBrands.Add($"Moderate reach at {v:N0} views — start with 1-2 video integrations and measure CTA click-rate before scaling.");
+                else
+                    forBrands.Add($"Strong reach at {v:N0} views — a dedicated sponsored video is cost-effective at this scale; negotiate performance bonus.");
+            }
+            else
+            {
+                forBrands.Add("View data is unavailable — request last 10-video avg. views from the creator before finalising deal terms.");
+            }
+
+            // ── Sentiment-based recommendations ──
+            switch (sentiment)
+            {
+                case "positive":
+                    forCreator.Add("Audience sentiment is strongly positive — quote top supportive comments in a community post as social proof.");
+                    forBrands.Add("Positive comment sentiment — favorable environment for brand mentions; audience is receptive to creator recommendations.");
+                    break;
+                case "negative":
+                    forCreator.Add("Negative sentiment detected — pinpoint the top 3 complaint themes in comments and address them explicitly in your next video.");
+                    forBrands.Add("Negative audience sentiment found — hold campaign launch; ask creator to resolve viewer concerns first.");
+                    break;
+                case "mixed":
+                    forCreator.Add("Mixed sentiment — check the negative comment threads for specific claims or confusion and clarify in the description.");
+                    forBrands.Add("Mixed audience sentiment — run a limited 1-video trial and monitor comment quality before scaling the campaign.");
+                    break;
+                default:
+                    forCreator.Add("Comment sample too small for reliable sentiment — enable comment auto-fetch (500+) to unlock accurate NLP scoring.");
+                    forBrands.Add("Insufficient comment data to assess audience sentiment — request a creator-side analytics report.");
+                    break;
+            }
+
+            // ── Theme-driven topics ──
+            if (themes.Count > 0)
+            {
+                forCreator.Add($"Top comment theme is \"{ themes[0]}\" — plan your next upload around this topic and add a pinned comment asking for viewer input.");
+                if (themes.Count > 1)
+                    forCreator.Add($"Secondary theme \"{ themes[1]}\" is emerging — address it in a community post or video chapter to show you listen.");
+                forBrands.Add($"Dominant audience interest: \"{ themes[0]}\" — align campaign messaging and CTA with this theme for higher relevance.");
+            }
+
+            // ── Audience questions ──
+            if (hasQuestions)
+            {
+                forCreator.Add("Audience questions detected in comments — reply to the top 3 within 24 h and consider making an FAQ / follow-up clip.");
+                forBrands.Add("Viewer questions present — a branded FAQ or tutorial format would resonate with this audience.");
+            }
+
+            // ── Collaboration / disclosure ──
+            switch (collabStatus)
+            {
+                case "Confirmed":
+                    forCreator.Add("Explicit sponsorship disclosure present — also toggle the paid-partnership label in YouTube Studio for compliance.");
+                    forBrands.Add("Confirmed disclosure found — verify it appears above the fold in the description and is spoken within the first 60 s of the video.");
+                    break;
+                case "Likely":
+                    forCreator.Add("Affiliate or CTA signals detected without explicit paid disclosure — add '#ad' or 'in partnership with…' text above the fold in the description.");
+                    forBrands.Add("Likely affiliate signals but no explicit paid-partnership disclosure — require creator to add FTC-compliant disclosure before campaign launch.");
+                    break;
+                case "No evidence":
+                    forBrands.Add("No existing sponsorship signals — good candidate for a first integration; still require written disclosure agreement.");
+                    break;
+            }
+
+            // ── Brand safety ──
+            if (profanityDetected)
+            {
+                forCreator.Add("Profanity detected in comments — enable YouTube Studio comment filters to protect audience experience and brand-safety rating.");
+                forBrands.Add("Profanity found in comments — verify brand-safety tolerance; consider requesting a moderation commitment from the creator.");
+            }
+
+            // ── Missing data ──
+            if (missingData.Any(m => m.Contains("tags")))
+                forCreator.Add("Video tags are missing — add 5-10 searchable tags in YouTube Studio to improve suggested-video placement.");
+            if (missingData.Any(m => m.Contains("time-series")))
+                forCreator.Add("No time-series data — feed 1 h / 6 h / 24 h / 7 d snapshots to unlock growth-velocity scoring.");
+            if (missingData.Any(m => m.Contains("subscriberCount")))
+                forBrands.Add("Subscriber count missing — request this directly from the creator or look it up before finalising deal terms.");
+            if (missingData.Any(m => m.Contains("Low comment sample")))
+                forBrands.Add($"Only {sampleSize} comments analysed — increase sample to 100+ for statistically reliable brand-safety assessment.");
+
+            if (forCreator.Count == 0)
+                forCreator.Add("Provide video statistics and at least 30 comments to unlock tailored creator recommendations.");
+            if (forBrands.Count == 0)
+                forBrands.Add("Provide channel baseline metrics and a comment sample to unlock detailed brand/agency recommendations.");
+
+            return new { for_creator = forCreator, for_brands_agencies = forBrands };
         }
 
         private static string? TryHost(string url)

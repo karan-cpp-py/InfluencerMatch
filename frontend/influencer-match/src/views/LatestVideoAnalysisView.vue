@@ -92,6 +92,9 @@
             <div class="card-body">
               <h6 class="fw-semibold mb-2">Comment Intelligence</h6>
               <div class="small mb-2"><strong>Sentiment:</strong> {{ result.comment_intelligence?.overall_sentiment || '—' }}</div>
+              <div class="small mb-2"><strong>Sample Size:</strong> {{ fmtNum(result.comment_intelligence?.sample_coverage?.sample_size) }}</div>
+              <div class="small mb-2"><strong>Fetch Mode:</strong> {{ result.comment_intelligence?.sample_coverage?.fetch?.mode || '—' }}</div>
+              <div class="small mb-2"><strong>Fetch Note:</strong> {{ result.comment_intelligence?.sample_coverage?.fetch?.note || '—' }}</div>
               <div class="small mb-2"><strong>Top Themes:</strong> {{ joinList(result.comment_intelligence?.top_5_themes) }}</div>
               <div class="small mb-1 fw-semibold">Audience Questions</div>
               <ul class="small mb-2 ps-3">
@@ -114,27 +117,25 @@
               <h6 class="fw-semibold mb-2">Recommendations</h6>
               <div class="row g-3">
                 <div class="col-md-6">
-                  <div class="small fw-semibold mb-1">For Creator</div>
+                  <div class="small fw-semibold mb-2 text-primary">For Creator</div>
                   <ul class="small ps-3 mb-0">
-                    <li v-for="(r, i) in (result.recommendations?.for_creator || [])" :key="`c-${i}`">{{ r }}</li>
+                    <li v-for="(r, i) in (result.recommendations?.for_creator || [])" :key="`c-${i}`" class="mb-1">{{ r }}</li>
                   </ul>
                 </div>
                 <div class="col-md-6">
-                  <div class="small fw-semibold mb-1">For Brands/Agencies</div>
+                  <div class="small fw-semibold mb-2 text-success">For Brands / Agencies</div>
                   <ul class="small ps-3 mb-0">
-                    <li v-for="(r, i) in (result.recommendations?.for_brands_agencies || [])" :key="`b-${i}`">{{ r }}</li>
+                    <li v-for="(r, i) in (result.recommendations?.for_brands_agencies || [])" :key="`b-${i}`" class="mb-1">{{ r }}</li>
                   </ul>
                 </div>
               </div>
-              <hr>
-              <div class="small fw-semibold mb-1">Missing Data Checklist</div>
-              <ul class="small ps-3 mb-2">
-                <li v-for="(m, i) in (result.missing_data_checklist || [])" :key="`m-${i}`">{{ m }}</li>
-              </ul>
-              <div class="small fw-semibold mb-1">UI Widget Ideas</div>
-              <ul class="small ps-3 mb-0">
-                <li v-for="(u, i) in (result.ui_widget_ideas || [])" :key="`u-${i}`">{{ u }}</li>
-              </ul>
+              <template v-if="result.missing_data_checklist?.length">
+                <hr>
+                <div class="small fw-semibold mb-1 text-warning">Data Gaps Detected</div>
+                <ul class="small ps-3 mb-0">
+                  <li v-for="(m, i) in result.missing_data_checklist" :key="`m-${i}`">{{ m }}</li>
+                </ul>
+              </template>
             </div>
           </div>
         </div>
@@ -176,7 +177,8 @@ function fmtDate(v) {
 }
 
 function fmtNum(v) {
-  const n = Number(v ?? 0);
+  if (v === null || v === undefined) return '—';
+  const n = Number(v);
   return Number.isFinite(n) ? n.toLocaleString() : '—';
 }
 
@@ -191,6 +193,49 @@ function joinList(v) {
 function isAuthError(error) {
   const status = error?.response?.status;
   return status === 401 || status === 403;
+}
+
+function isNotFoundError(error) {
+  return error?.response?.status === 404;
+}
+
+function normalizePayload(raw) {
+  const toNullableLong = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.round(n));
+  };
+
+  const payload = (raw && typeof raw === 'object') ? { ...raw } : {};
+  payload.video = (payload.video && typeof payload.video === 'object') ? { ...payload.video } : {};
+  payload.video.statistics = (payload.video.statistics && typeof payload.video.statistics === 'object')
+    ? { ...payload.video.statistics }
+    : {};
+
+  if (!Array.isArray(payload.comments)) payload.comments = [];
+  if (!Array.isArray(payload.timeSeries)) payload.timeSeries = [];
+  if (!Array.isArray(payload.video.tags)) payload.video.tags = [];
+
+  if (typeof payload.autoFetchComments !== 'boolean') payload.autoFetchComments = true;
+  if (!Number.isFinite(Number(payload.maxCommentsToFetch))) payload.maxCommentsToFetch = 500;
+  payload.maxCommentsToFetch = Math.max(50, Math.min(2000, Math.round(Number(payload.maxCommentsToFetch))));
+
+  payload.video.statistics.viewCount = toNullableLong(payload.video.statistics.viewCount);
+  payload.video.statistics.likeCount = toNullableLong(payload.video.statistics.likeCount);
+  payload.video.statistics.commentCount = toNullableLong(payload.video.statistics.commentCount);
+  payload.video.statistics.favoriteCount = toNullableLong(payload.video.statistics.favoriteCount);
+
+  payload.timeSeries = payload.timeSeries.map(point => {
+    const p = (point && typeof point === 'object') ? { ...point } : {};
+    p.viewCount = toNullableLong(p.viewCount);
+    p.likeCount = toNullableLong(p.likeCount);
+    p.commentCount = toNullableLong(p.commentCount);
+    if (!p.timestampUtc) p.timestampUtc = new Date().toISOString();
+    return p;
+  });
+
+  return payload;
 }
 
 async function loadTemplate() {
@@ -339,8 +384,21 @@ async function analyzeLatestAuto() {
         usedFallback = true;
       }
     } else {
-      const { data } = await api.get(`/creators/${creatorId}/analytics`);
-      creatorData = data;
+      try {
+        const { data } = await api.get(`/creators/${creatorId}/analytics`);
+        creatorData = data;
+      } catch (creatorError) {
+        if (isAuthError(creatorError)) throw creatorError;
+
+        usedFallback = true;
+        creatorData = {
+          channelName: `Creator #${creatorId}`,
+          channelId: null,
+          subscribers: null,
+          primaryLanguage: null,
+          averageViews: null
+        };
+      }
 
       try {
         const { data: videoData } = await api.get(`/creators/${creatorId}/video-analytics`);
@@ -348,9 +406,15 @@ async function analyzeLatestAuto() {
           ? videoData.videos[0]
           : null;
       } catch (videoError) {
-        if (!isAuthError(videoError)) {
+        if (isAuthError(videoError)) {
           throw videoError;
         }
+
+        if (!isNotFoundError(videoError)) {
+          // Non-auth, non-404 failures should not block analysis; we proceed with fallback data.
+          console.warn('Video analytics fetch failed, using fallback latest video payload.', videoError);
+        }
+
         usedFallback = true;
       }
     }
@@ -368,7 +432,7 @@ async function analyzeLatestAuto() {
       };
     }
 
-    const payload = buildPayloadFromContext(creatorData, latestVideo);
+    const payload = normalizePayload(buildPayloadFromContext(creatorData, latestVideo));
     inputJson.value = JSON.stringify(payload, null, 2);
     autoMeta.value = {
       title: usedFallback
@@ -384,6 +448,11 @@ async function analyzeLatestAuto() {
 
     const data = await analyzeLatestVideo(payload);
     result.value = data;
+    // If YouTube API enriched the video, clear the fallback warning
+    if (usedFallback && data?.enriched_from_youtube) {
+      apiError.value = 'Analytics row unavailable; video data was retrieved directly from YouTube API.';
+      apiNoticeKind.value = 'info';
+    }
   } catch (e) {
     apiNoticeKind.value = 'warning';
     apiError.value = e.userMessage || e.response?.data?.error || e.response?.data?.message || 'Failed to auto-analyze latest video.';
@@ -406,11 +475,17 @@ async function runAnalysis() {
       return;
     }
 
-    const data = await analyzeLatestVideo(payload);
+    const normalizedPayload = normalizePayload(payload);
+    if (!normalizedPayload.video || typeof normalizedPayload.video !== 'object') {
+      inputError.value = 'Video payload is required.';
+      return;
+    }
+
+    const data = await analyzeLatestVideo(normalizedPayload);
     result.value = data;
   } catch (e) {
     apiNoticeKind.value = 'warning';
-    apiError.value = e.response?.data?.error || 'Failed to run analysis.';
+    apiError.value = e.userMessage || e.response?.data?.error || e.response?.data?.message || 'Failed to run analysis.';
   } finally {
     running.value = false;
   }
