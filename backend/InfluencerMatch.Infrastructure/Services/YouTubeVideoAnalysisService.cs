@@ -559,7 +559,7 @@ namespace InfluencerMatch.Infrastructure.Services
                         }
                     });
 
-                    using var req = new HttpRequestMessage(HttpMethod.Post, $"https://api-inference.huggingface.co/models/{Uri.EscapeDataString(_hfModel)}")
+                    using var req = new HttpRequestMessage(HttpMethod.Post, $"https://router.huggingface.co/hf-inference/models/{Uri.EscapeDataString(_hfModel)}")
                     {
                         Content = new StringContent(payload, Encoding.UTF8, "application/json")
                     };
