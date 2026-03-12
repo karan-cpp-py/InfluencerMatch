@@ -277,7 +277,7 @@ namespace InfluencerMatch.Infrastructure.Services
             var normalizedCountry = string.IsNullOrWhiteSpace(country) ? "GLOBAL" : country.Trim();
             var normalizedLanguage = string.IsNullOrWhiteSpace(language) ? "Any" : language.Trim();
 
-            var creatorQuery = _db.Creators.AsNoTracking().Where(c => c.UserId == null);
+            var creatorQuery = _db.Creators.AsNoTracking().Where(c => c.ChannelId != null && c.ChannelId != "");
             if (!string.IsNullOrWhiteSpace(category))
                 creatorQuery = creatorQuery.Where(c => c.Category != null && c.Category == category);
             if (!string.IsNullOrWhiteSpace(country))
@@ -583,7 +583,7 @@ namespace InfluencerMatch.Infrastructure.Services
             string? brandLanguage,
             CancellationToken ct = default)
         {
-            var query = _db.Creators.AsNoTracking().Where(c => c.UserId == null);
+            var query = _db.Creators.AsNoTracking().Where(c => c.ChannelId != null && c.ChannelId != "");
             if (!string.IsNullOrWhiteSpace(category))
                 query = query.Where(c => c.Category == category);
             if (!string.IsNullOrWhiteSpace(country))

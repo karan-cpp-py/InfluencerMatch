@@ -222,10 +222,10 @@ public class DiscoveryController : ControllerBase
         return true;
     }
 
-    // ── Brand-facing: imported YouTube creators ──────────────────────────────
+    // ── Brand-facing: YouTube creator catalogue ─────────────────────────────
 
     /// <summary>
-    /// Returns YouTube creators imported by SuperAdmin (UserId == null).
+    /// Returns YouTube creators with valid channel IDs (registered + imported).
     /// Paginated and filterable. Accessible to any authenticated brand/user.
     /// GET /api/discovery/youtube-creators
     /// </summary>
@@ -244,8 +244,8 @@ public class DiscoveryController : ControllerBase
     {
         if (pageSize > 100) pageSize = 100;
 
-        // Imported creators: UserId is null
-        var query = _db.Creators.Where(c => c.UserId == null);
+        // Uniform scope: all creators with valid channel IDs.
+        var query = _db.Creators.Where(c => c.ChannelId != null && c.ChannelId != "");
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.ChannelName != null &&
@@ -316,14 +316,14 @@ public class DiscoveryController : ControllerBase
     }
 
     /// <summary>
-    /// Returns full profile for one imported YouTube creator including recent videos.
+    /// Returns full profile for one YouTube creator including recent videos.
     /// GET /api/discovery/youtube-creators/{creatorId}
     /// </summary>
     [HttpGet("youtube-creators/{creatorId:int}")]
     public async Task<IActionResult> GetYouTubeCreatorDetail(int creatorId)
     {
         var creator = await _db.Creators
-            .Where(c => c.CreatorId == creatorId && c.UserId == null)
+            .Where(c => c.CreatorId == creatorId && c.ChannelId != null && c.ChannelId != "")
             .Select(c => new {
                 c.CreatorId,
                 c.ChannelId,
@@ -374,14 +374,14 @@ public class DiscoveryController : ControllerBase
     }
 
     /// <summary>
-    /// Returns distinct categories for all imported YouTube creators.
+    /// Returns distinct categories for all YouTube creators with valid channel IDs.
     /// GET /api/discovery/youtube-creators/categories
     /// </summary>
     [HttpGet("youtube-creators/categories")]
     public async Task<IActionResult> GetYouTubeCreatorCategories()
     {
         var cats = await _db.Creators
-            .Where(c => c.UserId == null && c.Category != null && c.Category != "")
+            .Where(c => c.ChannelId != null && c.ChannelId != "" && c.Category != null && c.Category != "")
             .Select(c => c.Category!)
             .Distinct()
             .OrderBy(c => c)
