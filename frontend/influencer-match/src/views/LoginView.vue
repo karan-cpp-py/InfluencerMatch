@@ -45,6 +45,7 @@ import { useRouter } from 'vue-router';
 import api from '../services/api';
 import { normalizeAuthPayload, setAuth } from '../services/auth';
 import { authFromToken, homeRouteForRole } from '../services/claims';
+import { ensurePlatformConfigLoaded, platformConfig } from '../services/platform';
 
 const router = useRouter();
 const email = ref('');
@@ -57,7 +58,8 @@ async function submit() {
     const payload = normalizeAuthPayload(res.data);
     const auth = authFromToken(payload.accessToken);
     setAuth(payload.accessToken, auth.role, payload.refreshToken);
-    router.push(homeRouteForRole(auth.role));
+    await ensurePlatformConfigLoaded();
+    router.push(homeRouteForRole(auth.role, platformConfig.features));
   } catch (err) {
     error.value = err.userMessage || err.response?.data?.error || 'Login failed';
   }

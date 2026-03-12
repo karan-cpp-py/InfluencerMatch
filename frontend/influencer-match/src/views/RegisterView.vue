@@ -87,6 +87,7 @@ import api from '../services/api';
 import { normalizeAuthPayload, setAuth } from '../services/auth';
 import { authFromToken, homeRouteForRole } from '../services/claims';
 import { trackFunnelEvent } from '../services/funnel';
+import { ensurePlatformConfigLoaded, platformConfig } from '../services/platform';
 
 const router = useRouter();
 const name = ref('');
@@ -131,7 +132,8 @@ async function submit() {
       const auth = authFromToken(payload.accessToken);
       setAuth(payload.accessToken, auth.role, payload.refreshToken);
       await trackFunnelEvent('signup', { role: auth.role });
-      router.push(homeRouteForRole(auth.role));
+      await ensurePlatformConfigLoaded();
+      router.push(homeRouteForRole(auth.role, platformConfig.features));
     }
   } catch (err) {
     error.value = err.userMessage || err.response?.data?.error || 'Registration failed';

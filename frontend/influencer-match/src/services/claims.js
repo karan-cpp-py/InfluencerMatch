@@ -52,13 +52,23 @@ export function authFromToken(token) {
   };
 }
 
-export function homeRouteForRole(role) {
+export function homeRouteForRole(role, features = {}) {
   if (role === 'SuperAdmin') return '/admin';
   if (role === 'Creator') return '/creator-dashboard';
   if (role === 'Influencer') return '/influencer';
-  if (role === 'Brand') return '/marketplace';
-  if (role === 'Agency') return '/marketplace';
-  if (role === 'Individual') return '/dashboard-config';
-  if (role === 'CreatorManager') return '/dashboard-config';
+
+  // Brand/Agency should land in workbench routes based on feature rollout.
+  if (role === 'Brand' || role === 'Agency') {
+    if (features.enableBrandActivation) return '/brand';
+    if (features.enableMarketplace) return '/marketplace';
+    return '/brand/waitlist';
+  }
+
+  // Discovery-first landing for non-brand customer roles.
+  if (role === 'Individual' || role === 'CreatorManager') {
+    if (features.enableMarketplace) return '/brand/youtube-creators';
+    return '/dashboard-config';
+  }
+
   return '/';
 }

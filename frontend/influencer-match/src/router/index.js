@@ -128,7 +128,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.role) {
     const allowedRoles = Array.isArray(to.meta.role) ? to.meta.role : [to.meta.role];
     if (!allowedRoles.includes(role)) {
-      return next(homeRouteForRole(role));
+      return next(homeRouteForRole(role, platformConfig.features));
     }
   }
 
