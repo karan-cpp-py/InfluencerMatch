@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
@@ -17,6 +20,8 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly IHttpClientFactory _http;
         private readonly ILogger<YouTubeVideoAnalysisService> _logger;
         private readonly string? _apiKey;
+        private readonly string _hfModel;
+        private readonly string? _hfApiToken;
 
         private static readonly string[] ConfirmedCollabKeywords =
         {
@@ -26,19 +31,6 @@ namespace InfluencerMatch.Infrastructure.Services
         private static readonly string[] LikelyCollabKeywords =
         {
             "affiliate", "i earn a commission", "use code", "promo code", "discount code", "sign up", "free trial", "use my link", "download"
-        };
-
-        private static readonly Dictionary<string, double> PositiveWords = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["love"] = 2.0, ["great"] = 1.8, ["awesome"] = 1.9, ["helpful"] = 1.6, ["amazing"] = 2.0,
-            ["good"] = 1.2, ["best"] = 1.5, ["nice"] = 1.1, ["super"] = 1.2, ["excellent"] = 2.0,
-            ["clear"] = 1.0, ["informative"] = 1.4, ["thanks"] = 1.1, ["thank you"] = 1.4,
-        };
-        private static readonly Dictionary<string, double> NegativeWords = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["bad"] = 1.5, ["worst"] = 2.0, ["boring"] = 1.4, ["fake"] = 1.8, ["hate"] = 2.0,
-            ["waste"] = 1.7, ["misleading"] = 1.8, ["poor"] = 1.6, ["scam"] = 2.0,
-            ["confusing"] = 1.2, ["unclear"] = 1.1, ["clickbait"] = 1.6,
         };
 
         private static readonly Dictionary<string, string[]> EmotionLexicon = new(StringComparer.OrdinalIgnoreCase)
@@ -67,6 +59,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private record YtVideoContentDetails(string? duration, bool? madeForKids);
         private record YtVideoStatistics(string? viewCount, string? likeCount, string? commentCount, string? favoriteCount);
         private record YtVideoStatus(bool? madeForKids);
+        private record SentimentModelAggregate(bool Succeeded, string Source, string Status, int EvaluatedCount, int PositiveCount, int NeutralCount, int NegativeCount, string? Note = null);
 
         public YouTubeVideoAnalysisService(
             IHttpClientFactory http,
@@ -79,6 +72,15 @@ namespace InfluencerMatch.Infrastructure.Services
                 config["YouTube:ApiKey"]
                 ?? config["YouTube__ApiKey"]
                 ?? config["YOUTUBE_API_KEY"];
+
+            _hfModel =
+                config["HuggingFace:Model"]
+                ?? config["HuggingFace__Model"]
+                ?? "cardiffnlp/twitter-roberta-base-sentiment-latest";
+            _hfApiToken =
+                config["HuggingFace:ApiToken"]
+                ?? config["HuggingFace__ApiToken"]
+                ?? config["HUGGINGFACE_API_TOKEN"];
         }
 
         public async Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
@@ -152,25 +154,18 @@ namespace InfluencerMatch.Infrastructure.Services
             var allEvidenceText = string.Join("\n", new[] { title, description, string.Join(" ", tags) }.Where(x => !string.IsNullOrWhiteSpace(x))).ToLowerInvariant();
 
             var normalizedComments = comments ?? new List<YouTubeCommentDto>();
-
-            // ── NLP primitives (used by both comment intelligence & recommendations) ──
             var commentTexts = normalizedComments
                 .Select(c => c.TextOriginal ?? string.Empty)
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .ToList();
-            int nlpPos = 0, nlpNeg = 0;
-            foreach (var t in commentTexts.Select(x => x.ToLowerInvariant()))
-            {
-                var s = ScoreTextSentiment(t);
-                if (s > 0.35) nlpPos++;
-                else if (s < -0.35) nlpNeg++;
-            }
-            var nlpTotal = Math.Max(1, commentTexts.Count);
-            var nlpPosPct = commentTexts.Count > 0 ? (int)Math.Round(nlpPos * 100.0 / nlpTotal) : 0;
-            var nlpNegPct = commentTexts.Count > 0 ? (int)Math.Round(nlpNeg * 100.0 / nlpTotal) : 0;
-            var nlpSentiment = commentTexts.Count == 0
+            var sentimentModel = await AnalyzeSentimentWithModelAsync(commentTexts, Math.Min(maxFetch, 200));
+
+            // ── NLP primitives (used by both comment intelligence & recommendations) ──
+            var nlpSentiment = !sentimentModel.Succeeded
                 ? "insufficient"
-                : nlpPosPct >= 60 ? "positive" : nlpNegPct >= 40 ? "negative" : "mixed";
+                : sentimentModel.PositiveCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 60 ? "positive"
+                    : sentimentModel.NegativeCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 40 ? "negative"
+                    : "mixed";
             var nlpThemes = commentTexts.Count > 0 ? ExtractThemes(commentTexts).Take(5).ToList() : new List<string>();
             var nlpHasQuestions = commentTexts.Any(t => t.Contains('?'));
             var nlpProfanity = commentTexts.Any(t => ProfanityWords.Any(p => t.Contains(p, StringComparison.OrdinalIgnoreCase)));
@@ -198,7 +193,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
             var collaboration = DetectCollaboration(allEvidenceText, description, tags, normalizedComments);
             var growth = BuildGrowth(stats, request.TimeSeries);
-            var commentIntelligence = BuildCommentIntelligence(normalizedComments, stats.CommentCount, commentFetchMeta);
+            var commentIntelligence = BuildCommentIntelligence(normalizedComments, stats.CommentCount, commentFetchMeta, sentimentModel);
             var brandReadout = BuildBrandReadout(video, collaboration, commentIntelligence);
 
             var videoSummary = new
@@ -399,7 +394,7 @@ namespace InfluencerMatch.Infrastructure.Services
             };
         }
 
-        private static object BuildCommentIntelligence(List<YouTubeCommentDto> comments, long? totalCommentCount, object fetchMeta)
+        private static object BuildCommentIntelligence(List<YouTubeCommentDto> comments, long? totalCommentCount, object fetchMeta, SentimentModelAggregate sentimentModel)
         {
             var texts = comments.Select(c => c.TextOriginal ?? string.Empty).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             if (texts.Count == 0)
@@ -416,7 +411,15 @@ namespace InfluencerMatch.Infrastructure.Services
                     {
                         sample_size = 0,
                         total_comment_count = totalCommentCount,
-                        fetch = fetchMeta
+                        fetch = fetchMeta,
+                        sentiment_model = new
+                        {
+                            source = sentimentModel.Source,
+                            status = "insufficient_sample",
+                            model_ran = false,
+                            evaluated_comments = 0,
+                            note = "No comments available for model sentiment inference."
+                        }
                     },
                     brand_safety = new
                     {
@@ -441,21 +444,30 @@ namespace InfluencerMatch.Infrastructure.Services
 
             foreach (var t in texts.Select(x => x.ToLowerInvariant()))
             {
-                var score = ScoreTextSentiment(t);
-                if (score > 0.35) pos++;
-                else if (score < -0.35) neg++;
-                else neutral++;
-
                 var dominantEmotion = DetectDominantEmotion(t);
                 emotionCounts[dominantEmotion] += 1;
             }
 
             var total = Math.Max(1, texts.Count);
+            if (sentimentModel.Succeeded)
+            {
+                pos = sentimentModel.PositiveCount;
+                neg = sentimentModel.NegativeCount;
+                neutral = sentimentModel.NeutralCount;
+                total = Math.Max(1, sentimentModel.EvaluatedCount);
+            }
+            else
+            {
+                neutral = total;
+            }
+
             var posPct = (int)Math.Round(pos * 100.0 / total);
             var negPct = (int)Math.Round(neg * 100.0 / total);
             var mixedPct = Math.Max(0, 100 - posPct - negPct);
 
-            var sentiment = posPct >= 60 ? "Positive" : negPct >= 40 ? "Negative" : "Mixed";
+            var sentiment = sentimentModel.Succeeded
+                ? (posPct >= 60 ? "Positive" : negPct >= 40 ? "Negative" : "Mixed")
+                : "Model unavailable";
 
             var themes = ExtractThemes(texts).Take(5).ToList();
             var questions = texts.Where(t => t.Contains('?')).Take(6).Select(t => Trim(t, 20)).ToList();
@@ -489,6 +501,14 @@ namespace InfluencerMatch.Infrastructure.Services
                     sample_size = texts.Count,
                     total_comment_count = totalCommentCount,
                     fetch = fetchMeta,
+                    sentiment_model = new
+                    {
+                        source = sentimentModel.Source,
+                        status = sentimentModel.Status,
+                        model_ran = sentimentModel.Succeeded,
+                        evaluated_comments = sentimentModel.EvaluatedCount,
+                        note = sentimentModel.Note
+                    }
                 },
                 brand_safety = new
                 {
@@ -500,26 +520,119 @@ namespace InfluencerMatch.Infrastructure.Services
             };
         }
 
-        private static double ScoreTextSentiment(string text)
+        private async Task<SentimentModelAggregate> AnalyzeSentimentWithModelAsync(List<string> texts, int maxSamples)
         {
-            var score = 0.0;
-
-            foreach (var kv in PositiveWords)
+            var source = $"huggingface:{_hfModel}";
+            if (texts == null || texts.Count == 0)
             {
-                if (text.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
-                    score += kv.Value;
+                return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No comments to evaluate.");
             }
 
-            foreach (var kv in NegativeWords)
+            var sample = texts.Where(t => !string.IsNullOrWhiteSpace(t)).Take(Math.Max(1, maxSamples)).ToList();
+            if (sample.Count == 0)
             {
-                if (text.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
-                    score -= kv.Value;
+                return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No non-empty comments to evaluate.");
             }
 
-            if (text.Contains("!")) score += 0.1;
-            if (text.Contains("??")) score -= 0.2;
+            try
+            {
+                var http = _http.CreateClient();
+                if (!string.IsNullOrWhiteSpace(_hfApiToken))
+                {
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _hfApiToken);
+                }
 
-            return score;
+                int pos = 0, neg = 0, neutral = 0;
+
+                foreach (var text in sample)
+                {
+                    var payload = JsonSerializer.Serialize(new
+                    {
+                        inputs = text,
+                        options = new
+                        {
+                            wait_for_model = true,
+                            use_cache = true
+                        }
+                    });
+
+                    using var req = new HttpRequestMessage(HttpMethod.Post, $"https://api-inference.huggingface.co/models/{Uri.EscapeDataString(_hfModel)}")
+                    {
+                        Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                    };
+
+                    using var res = await http.SendAsync(req);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        _logger.LogWarning("HuggingFace sentiment call failed: {StatusCode} {Body}", (int)res.StatusCode, body);
+                        return new SentimentModelAggregate(false, source, "api_error", 0, 0, 0, 0, $"Model API error {(int)res.StatusCode}.");
+                    }
+
+                    var json = await res.Content.ReadAsStringAsync();
+                    var label = ParseSentimentLabel(json);
+                    switch (label)
+                    {
+                        case "positive": pos++; break;
+                        case "negative": neg++; break;
+                        default: neutral++; break;
+                    }
+                }
+
+                return new SentimentModelAggregate(true, source, "ok", sample.Count, pos, neutral, neg);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HuggingFace sentiment inference failed for model {Model}", _hfModel);
+                return new SentimentModelAggregate(false, source, "exception", 0, 0, 0, 0, "Model inference request failed.");
+            }
+        }
+
+        private static string ParseSentimentLabel(string json)
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            JsonElement entries;
+            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                var first = root[0];
+                if (first.ValueKind == JsonValueKind.Array)
+                {
+                    entries = first;
+                }
+                else
+                {
+                    entries = root;
+                }
+            }
+            else
+            {
+                return "neutral";
+            }
+
+            string bestLabel = "neutral";
+            double bestScore = double.MinValue;
+
+            foreach (var item in entries.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                if (!item.TryGetProperty("label", out var labelProp)) continue;
+
+                var labelRaw = labelProp.GetString() ?? string.Empty;
+                var label = labelRaw.ToLowerInvariant();
+                double score = item.TryGetProperty("score", out var scoreProp) && scoreProp.TryGetDouble(out var s) ? s : 0;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestLabel = label;
+                }
+            }
+
+            if (bestLabel.Contains("positive") || bestLabel == "label_2") return "positive";
+            if (bestLabel.Contains("negative") || bestLabel == "label_0") return "negative";
+            return "neutral";
         }
 
         private static string DetectDominantEmotion(string text)
