@@ -33,24 +33,24 @@ public class DiscoveryController : ControllerBase
     {
         var apiKey            = _config["YouTube:ApiKey"];
         var youtubeConfigured = IsApiKeyConfigured(apiKey);
-        var total             = await _db.Creators.CountAsync(c => c.UserId != null);
-        var smallCreators     = await _db.Creators.CountAsync(c => c.UserId != null && c.IsSmallCreator);
+        var total             = await _db.Creators.CountAsync(c => c.ChannelId != null && c.ChannelId != "");
+        var smallCreators     = await _db.Creators.CountAsync(c => c.ChannelId != null && c.ChannelId != "" && c.IsSmallCreator);
         var today             = DateTime.UtcNow.Date;
-        var addedToday        = await _db.Creators.CountAsync(c => c.UserId != null && c.CreatedAt >= today);
+        var addedToday        = await _db.Creators.CountAsync(c => c.ChannelId != null && c.ChannelId != "" && c.CreatedAt >= today);
         var topCategories     = await _db.Creators
-            .Where(c => c.UserId != null && c.Category != null && c.Category != "")
+            .Where(c => c.ChannelId != null && c.ChannelId != "" && c.Category != null && c.Category != "")
             .GroupBy(c => c.Category)
             .OrderByDescending(g => g.Count())
             .Select(g => new { category = g.Key, count = g.Count() })
             .Take(5)
             .ToListAsync();
         var tierBreakdown = await _db.Creators
-            .Where(c => c.UserId != null && c.CreatorTier != null)
+            .Where(c => c.ChannelId != null && c.ChannelId != "" && c.CreatorTier != null)
             .GroupBy(c => c.CreatorTier)
             .Select(g => new { tier = g.Key, count = g.Count() })
             .ToListAsync();
         var totalSubscribers = await _db.Creators
-            .Where(c => c.UserId != null)
+            .Where(c => c.ChannelId != null && c.ChannelId != "")
             .SumAsync(c => (long?)c.Subscribers) ?? 0;
         return Ok(new
         {
@@ -78,8 +78,8 @@ public class DiscoveryController : ControllerBase
         [FromQuery] int     page     = 1,
         [FromQuery] int     pageSize = 20)
     {
-        // Only show registered creators
-        var query = _db.Creators.Where(c => c.UserId != null);
+        // Show all creators with a valid channelId (registered + imported)
+        var query = _db.Creators.Where(c => c.ChannelId != null && c.ChannelId != "");
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.ChannelName != null && c.ChannelName.ToLower().Contains(search.ToLower()));
@@ -125,7 +125,7 @@ public class DiscoveryController : ControllerBase
     // -- Internal / AI-training endpoint --
 
     /// <summary>
-    /// Returns ALL registered creators (with UserId) regardless of subscriber count.
+    /// Returns all creators with valid channel IDs regardless of subscriber count.
     /// Intended for internal analytics dashboards and AI model training pipelines.
     /// </summary>
     [HttpGet("/api/internal/creators")]
@@ -142,8 +142,7 @@ public class DiscoveryController : ControllerBase
     {
         if (pageSize > 200) pageSize = 200;
 
-        // Only registered creators
-        var query = _db.Creators.Where(c => c.UserId != null);
+        var query = _db.Creators.Where(c => c.ChannelId != null && c.ChannelId != "");
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.ChannelName != null && c.ChannelName.ToLower().Contains(search.ToLower()));
@@ -206,7 +205,7 @@ public class DiscoveryController : ControllerBase
     public async Task<IActionResult> GetCategories()
     {
         var categories = await _db.Creators
-            .Where(c => c.UserId != null && c.Category != null && c.Category != "")
+            .Where(c => c.ChannelId != null && c.ChannelId != "" && c.Category != null && c.Category != "")
             .Select(c => c.Category)
             .Distinct()
             .OrderBy(c => c)

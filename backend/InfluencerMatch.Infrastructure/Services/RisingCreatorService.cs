@@ -42,7 +42,7 @@ namespace InfluencerMatch.Infrastructure.Services
         {
             var creators = await _db.Creators
                 .AsNoTracking()
-                .Where(c => c.UserId != null)
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
                 .ToListAsync(ct);
 
             _logger.LogInformation("RisingCreatorService: recalculating growth scores for {N} creators", creators.Count);
@@ -183,7 +183,7 @@ namespace InfluencerMatch.Infrastructure.Services
             // Join CreatorGrowthScores with Creators + optional CreatorAnalytics
             var query =
                 from gs in _db.CreatorGrowthScores.AsNoTracking()
-                join c  in _db.Creators.AsNoTracking().Where(c => c.UserId != null) on gs.CreatorId equals c.CreatorId
+                join c  in _db.Creators.AsNoTracking().Where(c => c.ChannelId != null && c.ChannelId != "") on gs.CreatorId equals c.CreatorId
                 join a  in _db.CreatorAnalytics.AsNoTracking() on c.CreatorId equals a.CreatorId into aj
                 from a  in aj.DefaultIfEmpty()
                 select new { gs, c, a };
@@ -232,7 +232,7 @@ namespace InfluencerMatch.Infrastructure.Services
             int topN, string? growthCategory, string? country)
         {
             var creators = await _db.Creators.AsNoTracking()
-                .Where(c => c.UserId != null && (country == null || c.Country == country))
+                .Where(c => c.ChannelId != null && c.ChannelId != "" && (country == null || c.Country == country))
                 .ToListAsync();
 
             if (!creators.Any()) return new List<RisingCreatorDto>();

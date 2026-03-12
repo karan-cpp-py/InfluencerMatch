@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
@@ -137,10 +138,30 @@ namespace InfluencerMatch.API.Controllers
         [ProducesResponseType(404)]
         public async Task<IActionResult> RefreshVideoAnalytics(int creatorId, CancellationToken ct)
         {
-            var n = await _videoAnalytics.RefreshCreatorAsync(creatorId, ct);
-            if (n < 0)
-                return NotFound(new { message = $"Creator {creatorId} not found." });
-            return Ok(new { message = $"Video analytics refreshed. {n} rows upserted." });
+            try
+            {
+                var n = await _videoAnalytics.RefreshCreatorAsync(creatorId, ct);
+                if (n < 0)
+                    return NotFound(new { message = $"Creator {creatorId} not found." });
+                return Ok(new { message = $"Video analytics refreshed. {n} rows upserted." });
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Video analytics refresh failed for creatorId={Id}", creatorId);
+                return StatusCode(502, new
+                {
+                    message = "Could not refresh creator videos from YouTube right now. Please retry shortly.",
+                    detail = ex.Message
+                });
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected video analytics refresh failure for creatorId={Id}", creatorId);
+                return StatusCode(500, new
+                {
+                    message = "Something went wrong while refreshing video analytics."
+                });
+            }
         }
     }
 }

@@ -114,7 +114,10 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task ScanAllCreatorsAsync(CancellationToken ct = default)
         {
-            var ids = await _db.Creators.Where(c => c.UserId != null).Select(c => c.CreatorId).ToListAsync(ct);
+            var ids = await _db.Creators
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .Select(c => c.CreatorId)
+                .ToListAsync(ct);
             _logger.LogInformation("Brand-promotion scan starting for {N} creators", ids.Count);
 
             int total = 0;

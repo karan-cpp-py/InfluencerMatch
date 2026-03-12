@@ -165,7 +165,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
             // ── NLP primitives (used by both comment intelligence & recommendations) ──
             var nlpSentiment = !sentimentModel.Succeeded
-                ? "insufficient"
+                ? (sentimentModel.Status == "insufficient_sample" ? "insufficient" : "model_unavailable")
                 : sentimentModel.PositiveCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 60 ? "positive"
                     : sentimentModel.NegativeCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 40 ? "negative"
                     : "mixed";
@@ -531,7 +531,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No comments to evaluate.");
             }
 
-            var sample = texts.Where(t => !string.IsNullOrWhiteSpace(t)).Take(Math.Max(1, maxSamples)).ToList();
+            var sample = texts
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Select(NormalizeCommentForModel)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Take(Math.Max(1, maxSamples))
+                .ToList();
             if (sample.Count == 0)
             {
                 return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No non-empty comments to evaluate.");
@@ -545,7 +550,7 @@ namespace InfluencerMatch.Infrastructure.Services
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _hfApiToken);
                 }
 
-                int pos = 0, neg = 0, neutral = 0;
+                int pos = 0, neg = 0, neutral = 0, failed = 0;
 
                 foreach (var text in sample)
                 {
@@ -569,7 +574,8 @@ namespace InfluencerMatch.Infrastructure.Services
                     {
                         var body = await res.Content.ReadAsStringAsync();
                         _logger.LogWarning("HuggingFace sentiment call failed: {StatusCode} {Body}", (int)res.StatusCode, body);
-                        return new SentimentModelAggregate(false, source, "api_error", 0, 0, 0, 0, $"Model API error {(int)res.StatusCode}.");
+                        failed++;
+                        continue;
                     }
 
                     var json = await res.Content.ReadAsStringAsync();
@@ -582,7 +588,17 @@ namespace InfluencerMatch.Infrastructure.Services
                     }
                 }
 
-                return new SentimentModelAggregate(true, source, "ok", sample.Count, pos, neutral, neg);
+                var succeededCount = pos + neg + neutral;
+                if (succeededCount == 0)
+                {
+                    return new SentimentModelAggregate(false, source, "api_error", 0, 0, 0, 0, $"Model inference failed for all {sample.Count} comments.");
+                }
+
+                var note = failed > 0
+                    ? $"Model evaluated {succeededCount} comments successfully; skipped {failed} comments rejected by provider."
+                    : null;
+
+                return new SentimentModelAggregate(true, source, failed > 0 ? "partial_success" : "ok", succeededCount, pos, neutral, neg, note);
             }
             catch (Exception ex)
             {
@@ -591,13 +607,28 @@ namespace InfluencerMatch.Infrastructure.Services
             }
         }
 
+        private static string NormalizeCommentForModel(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+            var normalized = Regex.Replace(text, @"\s+", " ").Trim();
+            const int maxChars = 450;
+            return normalized.Length <= maxChars
+                ? normalized
+                : normalized[..maxChars];
+        }
+
         private static string ParseSentimentLabel(string json)
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             JsonElement entries;
-            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("value", out var valueProp) && valueProp.ValueKind == JsonValueKind.Array)
+            {
+                entries = valueProp;
+            }
+            else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
             {
                 var first = root[0];
                 if (first.ValueKind == JsonValueKind.Array)
@@ -1022,6 +1053,10 @@ namespace InfluencerMatch.Infrastructure.Services
                 case "mixed":
                     forCreator.Add("Mixed sentiment — check the negative comment threads for specific claims or confusion and clarify in the description.");
                     forBrands.Add("Mixed audience sentiment — run a limited 1-video trial and monitor comment quality before scaling the campaign.");
+                    break;
+                case "model_unavailable":
+                    forCreator.Add("Sentiment model could not score part of this comment set — review the sentiment note and rerun if provider throttling persists.");
+                    forBrands.Add("Sentiment model was temporarily unavailable or partially rejected comments — avoid using sentiment alone for approval until rerun succeeds.");
                     break;
                 default:
                     forCreator.Add("Comment sample too small for reliable sentiment — enable comment auto-fetch (500+) to unlock accurate NLP scoring.");

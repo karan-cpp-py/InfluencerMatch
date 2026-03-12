@@ -120,7 +120,10 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task RefreshAllAnalyticsAsync()
         {
-            var creatorIds = await _db.Creators.Where(c => c.UserId != null).Select(c => c.CreatorId).ToListAsync();
+            var creatorIds = await _db.Creators
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .Select(c => c.CreatorId)
+                .ToListAsync();
             _logger.LogInformation("Refreshing analytics for {Count} creators", creatorIds.Count);
             foreach (var id in creatorIds)
             {
@@ -144,7 +147,9 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task RecordGrowthSnapshotAsync()
         {
-            var creators = await _db.Creators.AsNoTracking().Where(c => c.UserId != null).ToListAsync();
+            var creators = await _db.Creators.AsNoTracking()
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .ToListAsync();
             _logger.LogInformation("Recording growth snapshots for {Count} creators", creators.Count);
             foreach (var creator in creators)
             {

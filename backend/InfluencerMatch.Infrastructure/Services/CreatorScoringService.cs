@@ -88,7 +88,10 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task RecalculateAllScoresAsync(CancellationToken ct = default)
         {
-            var ids = await _db.Creators.Where(c => c.UserId != null).Select(c => c.CreatorId).ToListAsync(ct);
+            var ids = await _db.Creators
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .Select(c => c.CreatorId)
+                .ToListAsync(ct);
             _logger.LogInformation("Recalculating creator scores for {N} creators", ids.Count);
             foreach (var id in ids)
             {

@@ -97,6 +97,7 @@
               <div class="small mb-2"><strong>Fetch Note:</strong> {{ result.comment_intelligence?.sample_coverage?.fetch?.note || '—' }}</div>
               <div class="small mb-2"><strong>Sentiment Source:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.source || '—' }}</div>
               <div class="small mb-2"><strong>Sentiment Model Status:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.status || '—' }}</div>
+              <div class="small mb-2"><strong>Sentiment Note:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.note || '—' }}</div>
               <div class="small mb-2"><strong>Top Themes:</strong> {{ joinList(result.comment_intelligence?.top_5_themes) }}</div>
               <div class="small mb-1 fw-semibold">Audience Questions</div>
               <ul class="small mb-2 ps-3">

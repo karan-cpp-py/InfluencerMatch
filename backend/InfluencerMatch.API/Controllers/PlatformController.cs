@@ -34,7 +34,7 @@ namespace InfluencerMatch.API.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetConfig()
         {
-            var creatorCount = await _db.CreatorProfiles.CountAsync();
+            var creatorCount = await _db.Creators.CountAsync(c => c.ChannelId != null && c.ChannelId != "");
             var creatorThresholdReached = creatorCount >= _options.BrandActivationCreatorThreshold;
 
             return Ok(new

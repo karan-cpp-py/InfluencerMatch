@@ -325,11 +325,11 @@ const activeFilterCount = computed(() => {
   if (f.search) n += 1;
   if (f.platform) n += 1;
   if (f.category) n += 1;
-  if (f.country && f.country !== 'IN') n += 1;
+  if (f.country) n += 1;
   if (f.region) n += 1;
   if (f.language) n += 1;
-  if (f.minSubscribers !== 1000) n += 1;
-  if (f.maxSubscribers !== 500000) n += 1;
+  if (Number(f.minSubscribers) > 0) n += 1;
+  if (f.maxSubscribers !== null && f.maxSubscribers !== undefined && f.maxSubscribers !== '') n += 1;
   if (f.minEngagement !== null && f.minEngagement !== undefined && f.minEngagement !== '') n += 1;
   if (f.sortBy !== 'subscribers') n += 1;
   return n;
@@ -339,11 +339,11 @@ const filters = ref({
   search: '',
   platform: '',
   category: '',
-  country: 'IN',   // default India
+  country: '',
   region: '',
   language: '',
-  minSubscribers: 1000,      // show only small/micro/mid-tier creators by default
-  maxSubscribers: 500000,
+  minSubscribers: 0,
+  maxSubscribers: null,
   minEngagement: null,
   sortBy: 'subscribers',
 });
@@ -489,7 +489,7 @@ async function fetchLanguages() {
 
 function runSearch() { page.value = 1; fetchCreators(); }
 function resetFilters() {
-  filters.value = { search:'', platform:'', category:'', country:'IN', region:'', language:'', minSubscribers:1000, maxSubscribers:500000, minEngagement:null, sortBy:'subscribers' };
+  filters.value = { search:'', platform:'', category:'', country:'', region:'', language:'', minSubscribers:0, maxSubscribers:null, minEngagement:null, sortBy:'subscribers' };
   page.value = 1;
   fetchCreators();
 }

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
@@ -92,7 +93,13 @@ namespace InfluencerMatch.Infrastructure.Services
         {
             var creator = await _db.Creators.AsNoTracking()
                 .FirstOrDefaultAsync(c => c.CreatorId == creatorId, ct);
-            if (creator == null) return 0;
+            if (creator == null) return -1;
+
+            if (string.IsNullOrWhiteSpace(creator.ChannelId))
+            {
+                _log.LogWarning("VideoAnalytics: creator {Id} has no channelId; skipping refresh", creatorId);
+                return 0;
+            }
 
             var videos = await FetchRecentVideosAsync(creator.ChannelId, 10, ct);
             if (videos.Count == 0) return 0;
@@ -155,7 +162,10 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task RefreshAllAsync(CancellationToken ct = default)
         {
-            var ids = await _db.Creators.Where(c => c.UserId != null).Select(c => c.CreatorId).ToListAsync(ct);
+            var ids = await _db.Creators
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .Select(c => c.CreatorId)
+                .ToListAsync(ct);
             _log.LogInformation("VideoAnalytics refresh starting for {N} creators", ids.Count);
 
             int total = 0;
@@ -379,7 +389,7 @@ namespace InfluencerMatch.Infrastructure.Services
                     var title       = snippet.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
                     var description = snippet.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
                     var publishedAt = snippet.TryGetProperty("publishedAt", out var pa)
-                        ? DateTime.Parse(pa.GetString() ?? DateTime.UtcNow.ToString("o"))
+                        ? ParseUtcDateTime(pa.GetString())
                         : DateTime.UtcNow;
 
                     long views    = ParseLong(stats, "viewCount");
@@ -412,6 +422,23 @@ namespace InfluencerMatch.Infrastructure.Services
                 long.TryParse(prop.GetString(), out var val))
                 return val;
             return 0;
+        }
+
+        private static DateTime ParseUtcDateTime(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return DateTime.UtcNow;
+
+            if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto))
+            {
+                return dto.UtcDateTime;
+            }
+
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
+            {
+                return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+            }
+
+            return DateTime.UtcNow;
         }
     }
 }

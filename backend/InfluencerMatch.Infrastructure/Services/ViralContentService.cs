@@ -130,7 +130,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private async Task<int> TryFetchYouTubeVideosAsync(CancellationToken ct)
         {
             var creators = await _db.Creators.AsNoTracking()
-                .Where(c => c.UserId != null)
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
                 .OrderByDescending(c => c.Subscribers)
                 .Take(ApiCreatorLimit)
                 .ToListAsync(ct);
@@ -225,7 +225,9 @@ namespace InfluencerMatch.Infrastructure.Services
         {
             _logger.LogInformation("ViralContentService: using CreatorAnalytics fallback");
 
-            var creators = await _db.Creators.AsNoTracking().Where(c => c.UserId != null).ToListAsync(ct);
+            var creators = await _db.Creators.AsNoTracking()
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .ToListAsync(ct);
             var analyticsMap = await _db.CreatorAnalytics.AsNoTracking()
                 .ToDictionaryAsync(a => a.CreatorId, ct);
 
