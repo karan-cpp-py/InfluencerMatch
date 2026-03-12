@@ -430,4 +430,33 @@ public class DiscoveryController : ControllerBase
         if (fit == null) return NotFound();
         return Ok(fit);
     }
+
+    [HttpGet("opportunity-radar")]
+    public async Task<IActionResult> GetOpportunityRadar(
+        [FromQuery] string? category = null,
+        [FromQuery] string? country = null,
+        [FromQuery] string? language = null,
+        [FromQuery] int limit = 10)
+    {
+        var result = await _advancedAnalytics.GetOpportunityRadarAsync(category, country, language, limit);
+        return Ok(result);
+    }
+
+    [HttpGet("youtube-creators/{creatorId:int}/readiness")]
+    public async Task<IActionResult> GetSponsorshipReadiness(int creatorId)
+    {
+        var result = await _advancedAnalytics.GetSponsorshipReadinessAsync(creatorId);
+        if (result == null) return NotFound();
+        return Ok(result);
+    }
+
+    [HttpGet("regional-language-performance")]
+    public async Task<IActionResult> GetRegionalLanguagePerformance(
+        [FromQuery] string? category = null,
+        [FromQuery] string? country = null,
+        [FromQuery] string? brandLanguage = null)
+    {
+        var result = await _advancedAnalytics.GetRegionalLanguagePerformanceAsync(category, country, brandLanguage);
+        return Ok(result);
+    }
 }

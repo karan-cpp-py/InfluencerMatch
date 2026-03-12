@@ -37,6 +37,41 @@
         </div>
       </div>
 
+      <div class="card border-0 shadow-sm table-card mb-4" v-if="competitorSov">
+        <div class="card-body p-3 p-md-4">
+          <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+            <h5 class="fw-semibold mb-0">Competitor Share of Voice</h5>
+            <small class="text-muted">Brand: {{ competitorSov.brandName || 'N/A' }}</small>
+          </div>
+          <div class="small text-muted mb-3">Category: {{ competitorSov.category || 'General' }}</div>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Competitor</th>
+                  <th class="text-end">SOV</th>
+                  <th class="text-end">Videos</th>
+                  <th class="text-end">Creators</th>
+                  <th class="text-end">Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in competitorSov.competitors || []" :key="row.competitorBrand">
+                  <td>{{ row.competitorBrand }}</td>
+                  <td class="text-end">{{ Number(row.shareOfVoicePercent || 0).toFixed(1) }}%</td>
+                  <td class="text-end">{{ fmtCompact(row.mentionedVideos) }}</td>
+                  <td class="text-end">{{ fmtCompact(row.mentionedByCreators) }}</td>
+                  <td class="text-end text-capitalize">{{ row.trend || 'flat' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul class="small mt-3 mb-0" v-if="competitorSov.whiteSpaceOpportunities?.length">
+            <li v-for="tip in competitorSov.whiteSpaceOpportunities" :key="tip">{{ tip }}</li>
+          </ul>
+        </div>
+      </div>
+
       <div class="card border-0 shadow-sm table-card">
         <div class="card-body p-3 p-md-4">
           <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
@@ -126,6 +161,33 @@
                           </div>
                         </div>
 
+                        <div v-if="campaignNegotiation[c.campaignId]" class="mb-2">
+                          <h6 class="fw-semibold mb-1">Negotiation Intelligence</h6>
+                          <div class="small text-muted mb-2">Risk profile: {{ campaignNegotiation[c.campaignId].riskProfile }}</div>
+                          <div class="row g-2 mb-2">
+                            <div class="col-6 col-md-3"><div class="summary-card p-2"><div class="summary-label">Fair Min</div><div class="summary-value small-value">${{ money(campaignNegotiation[c.campaignId].fairPriceMin) }}</div></div></div>
+                            <div class="col-6 col-md-3"><div class="summary-card p-2"><div class="summary-label">Fair Median</div><div class="summary-value small-value">${{ money(campaignNegotiation[c.campaignId].fairPriceMedian) }}</div></div></div>
+                            <div class="col-6 col-md-3"><div class="summary-card p-2"><div class="summary-label">Fair Max</div><div class="summary-value small-value">${{ money(campaignNegotiation[c.campaignId].fairPriceMax) }}</div></div></div>
+                            <div class="col-6 col-md-3"><div class="summary-card p-2"><div class="summary-label">Contract</div><div class="summary-value small-value">{{ campaignNegotiation[c.campaignId].suggestedContractStructure }}</div></div></div>
+                          </div>
+                        </div>
+
+                        <div v-if="campaignCreativeBrief[c.campaignId]" class="mb-2">
+                          <h6 class="fw-semibold mb-1">Creative Brief Intelligence</h6>
+                          <div class="small text-muted mb-2">Goal: {{ campaignCreativeBrief[c.campaignId].campaignGoal }}</div>
+                          <div class="row g-2 mb-2">
+                            <div class="col-6 col-md-4"><div class="summary-card p-2"><div class="summary-label">Brief Style</div><div class="summary-value small-value">{{ campaignCreativeBrief[c.campaignId].bestBriefStyle }}</div></div></div>
+                            <div class="col-6 col-md-4"><div class="summary-card p-2"><div class="summary-label">Angles</div><div class="summary-value small-value">{{ (campaignCreativeBrief[c.campaignId].suggestedContentAngles || []).length }}</div></div></div>
+                            <div class="col-12 col-md-4"><div class="summary-card p-2"><div class="summary-label">Variants</div><div class="summary-value small-value">{{ (campaignCreativeBrief[c.campaignId].testVariants || []).length }}</div></div></div>
+                          </div>
+                          <ul class="small mb-2" v-if="campaignCreativeBrief[c.campaignId].suggestedContentAngles?.length">
+                            <li v-for="point in campaignCreativeBrief[c.campaignId].suggestedContentAngles" :key="point">{{ point }}</li>
+                          </ul>
+                          <div class="small text-muted" v-if="campaignCreativeBrief[c.campaignId].suggestedCreatorMix?.length">
+                            Mix: {{ campaignCreativeBrief[c.campaignId].suggestedCreatorMix.map((x) => `${x.segment} (${x.creatorCount})`).join(', ') }}
+                          </div>
+                        </div>
+
                         <h6 class="fw-semibold mb-1">Creator Contribution Ranking</h6>
                         <div class="table-responsive">
                           <table class="table table-sm mb-0">
@@ -179,6 +241,9 @@ const router = useRouter();
 const search = ref('');
 const campaignAnalytics = ref({});
 const campaignForecasts = ref({});
+const campaignNegotiation = ref({});
+const campaignCreativeBrief = ref({});
+const competitorSov = ref(null);
 const expandedCampaignId = ref(null);
 const analyticsLoading = ref(false);
 const analyticsError = ref('');
@@ -221,10 +286,29 @@ onMounted(async () => {
     const brandId = payload.nameid;
     const res = await api.get(`/campaign/brand/${brandId}`);
     campaigns.value = res.data;
+    await fetchCompetitorSov();
   } finally {
     loading.value = false;
   }
 });
+
+async function fetchCompetitorSov() {
+  try {
+    const categories = campaigns.value
+      .map((x) => String(x.category || '').trim())
+      .filter(Boolean);
+    const unique = [...new Set(categories)];
+    const params = {
+      brandName: 'BrandPortfolio',
+      primaryCompetitor: unique[0] || undefined,
+      secondaryCompetitor: unique[1] || undefined,
+    };
+    const res = await api.get('/campaign/competitor-share-of-voice', { params });
+    competitorSov.value = res.data;
+  } catch {
+    competitorSov.value = null;
+  }
+}
 
 function viewResults(id) {
   router.push(`/results/${id}`);
@@ -244,9 +328,11 @@ async function toggleAnalytics(campaign) {
   analyticsError.value = '';
   analyticsLoading.value = true;
   try {
-    const [outcomeRes, forecastRes] = await Promise.all([
+    const [outcomeRes, forecastRes, negotiationRes, creativeRes] = await Promise.all([
       api.get(`/campaign/${campaign.campaignId}/outcomes`),
-      api.post(`/campaign/${campaign.campaignId}/forecast`, { budgetOverride: campaign.budget })
+      api.post(`/campaign/${campaign.campaignId}/forecast`, { budgetOverride: campaign.budget }),
+      api.get(`/campaign/${campaign.campaignId}/negotiation-intelligence`, { params: { proposedPrice: campaign.budget } }),
+      api.post(`/campaign/${campaign.campaignId}/creative-brief-intelligence`, { campaignGoal: `Drive ${campaign.category || 'brand'} awareness in ${campaign.targetLocation || 'target market'}` })
     ]);
 
     campaignAnalytics.value = {
@@ -257,6 +343,16 @@ async function toggleAnalytics(campaign) {
     campaignForecasts.value = {
       ...campaignForecasts.value,
       [campaign.campaignId]: forecastRes.data,
+    };
+
+    campaignNegotiation.value = {
+      ...campaignNegotiation.value,
+      [campaign.campaignId]: negotiationRes.data,
+    };
+
+    campaignCreativeBrief.value = {
+      ...campaignCreativeBrief.value,
+      [campaign.campaignId]: creativeRes.data,
     };
   } catch (e) {
     analyticsError.value = e?.userMessage || e?.response?.data?.error || 'Unable to load campaign insights.';

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.API.Services;
@@ -1193,6 +1194,67 @@ namespace InfluencerMatch.API.Controllers
         }
 
         /// <summary>
+        /// One-time data hygiene job for legacy importer rows.
+        /// Clears invalid/false-positive Instagram and Twitter handles from Creators.
+        /// </summary>
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpPost("jobs/cleanup-invalid-social-handles")]
+        public async Task<IActionResult> CleanupInvalidSocialHandles(CancellationToken ct = default)
+        {
+            var creators = await _db.Creators
+                .Where(c => c.InstagramHandle != null || c.TwitterHandle != null)
+                .ToListAsync(ct);
+
+            var scanned = 0;
+            var affectedRows = 0;
+            var instagramCleared = 0;
+            var twitterCleared = 0;
+
+            foreach (var creator in creators)
+            {
+                scanned++;
+
+                var originalIg = creator.InstagramHandle;
+                var originalTw = creator.TwitterHandle;
+
+                var normalizedIg = NormalizeInstagramHandle(originalIg);
+                var normalizedTw = NormalizeTwitterHandle(originalTw);
+
+                if (!string.Equals(originalIg, normalizedIg, StringComparison.Ordinal))
+                {
+                    creator.InstagramHandle = normalizedIg;
+                    if (originalIg != null && normalizedIg == null) instagramCleared++;
+                }
+
+                if (!string.Equals(originalTw, normalizedTw, StringComparison.Ordinal))
+                {
+                    creator.TwitterHandle = normalizedTw;
+                    if (originalTw != null && normalizedTw == null) twitterCleared++;
+                }
+
+                if (!string.Equals(originalIg, creator.InstagramHandle, StringComparison.Ordinal)
+                    || !string.Equals(originalTw, creator.TwitterHandle, StringComparison.Ordinal))
+                {
+                    affectedRows++;
+                }
+            }
+
+            if (affectedRows > 0)
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+
+            return Ok(new
+            {
+                scanned,
+                affectedRows,
+                instagramCleared,
+                twitterCleared,
+                timestamp = DateTime.UtcNow
+            });
+        }
+
+        /// <summary>
         /// Browse all creators currently in the database (paginated, filterable).
         /// Used by the SuperAdmin YouTube importer results view.
         /// </summary>
@@ -1264,6 +1326,31 @@ namespace InfluencerMatch.API.Controllers
                 .ToListAsync(ct);
 
             return Ok(new { page, pageSize, total, items = rows });
+        }
+
+        private static string? NormalizeInstagramHandle(string? handle)
+        {
+            if (string.IsNullOrWhiteSpace(handle)) return null;
+
+            var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+            if (!Regex.IsMatch(h, @"^[a-z0-9._]{2,30}$")) return null;
+            if (h.StartsWith('.') || h.EndsWith('.')) return null;
+
+            // Common false positives from email parsing
+            if (h == "gmail" || h == "yahoo" || h == "hotmail" || h == "outlook" || h == "protonmail") return null;
+            if (h.EndsWith(".com") || h.EndsWith(".net") || h.EndsWith(".org") || h.EndsWith(".in") || h.EndsWith(".co")) return null;
+
+            return h;
+        }
+
+        private static string? NormalizeTwitterHandle(string? handle)
+        {
+            if (string.IsNullOrWhiteSpace(handle)) return null;
+
+            var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+            if (!Regex.IsMatch(h, @"^[a-z0-9_]{2,15}$")) return null;
+
+            return h;
         }
     }
 

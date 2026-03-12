@@ -55,6 +55,10 @@ namespace InfluencerMatch.Infrastructure.Data
         public DbSet<ReferralUsage> ReferralUsages { get; set; }
         public DbSet<CreatorHealthSnapshot> CreatorHealthSnapshots { get; set; }
         public DbSet<CampaignAnalyticsSnapshot> CampaignAnalyticsSnapshots { get; set; }
+        public DbSet<OpportunityRadarSnapshot> OpportunityRadarSnapshots { get; set; }
+        public DbSet<CreatorReadinessSnapshot> CreatorReadinessSnapshots { get; set; }
+        public DbSet<CampaignStrategySnapshot> CampaignStrategySnapshots { get; set; }
+        public DbSet<BrandSovSnapshot> BrandSovSnapshots { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -607,6 +611,40 @@ namespace InfluencerMatch.Infrastructure.Data
                 .HasForeignKey(x => x.CampaignId)
                 .OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<CampaignAnalyticsSnapshot>()
+                .HasIndex(x => x.CalculatedAt);
+
+            modelBuilder.Entity<OpportunityRadarSnapshot>()
+                .HasIndex(x => new { x.Category, x.Country, x.Language })
+                .IsUnique();
+            modelBuilder.Entity<OpportunityRadarSnapshot>()
+                .HasIndex(x => x.CalculatedAt);
+
+            modelBuilder.Entity<CreatorReadinessSnapshot>()
+                .HasIndex(x => x.CreatorId)
+                .IsUnique();
+            modelBuilder.Entity<CreatorReadinessSnapshot>()
+                .HasOne(x => x.Creator)
+                .WithMany()
+                .HasForeignKey(x => x.CreatorId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<CreatorReadinessSnapshot>()
+                .HasIndex(x => x.CalculatedAt);
+
+            modelBuilder.Entity<CampaignStrategySnapshot>()
+                .HasIndex(x => x.CampaignId)
+                .IsUnique();
+            modelBuilder.Entity<CampaignStrategySnapshot>()
+                .HasOne(x => x.Campaign)
+                .WithMany()
+                .HasForeignKey(x => x.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<CampaignStrategySnapshot>()
+                .HasIndex(x => x.CalculatedAt);
+
+            modelBuilder.Entity<BrandSovSnapshot>()
+                .HasIndex(x => new { x.BrandName, x.Category, x.Country, x.Language })
+                .IsUnique();
+            modelBuilder.Entity<BrandSovSnapshot>()
                 .HasIndex(x => x.CalculatedAt);
         }
     }

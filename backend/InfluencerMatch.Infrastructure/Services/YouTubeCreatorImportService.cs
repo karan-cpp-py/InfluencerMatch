@@ -40,9 +40,24 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly string? _apiKey;
 
         // ──── Regex patterns ─────────────────────────────────────────────────
-        private static readonly Regex EmailRx     = new(@"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b",   RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex InstagramRx = new(@"(?:instagram\.com/|@)([a-zA-Z0-9._]{2,30})",              RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex TwitterRx   = new(@"(?:twitter\.com/|x\.com/)([a-zA-Z0-9_]{1,15})",           RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex EmailRx = new(
+            @"\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // Use explicit platform signals only; plain "@word" catches email domains and creates false positives.
+        private static readonly Regex InstagramUrlRx = new(
+            @"(?:https?://)?(?:www\.)?instagram\.com/(?!p/|reel/|tv/|stories/)([a-zA-Z0-9._]{2,30})(?:[/?#]|$)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex InstagramLabeledRx = new(
+            @"(?:instagram|insta|ig)\s*[:\-]?\s*@([a-zA-Z0-9._]{2,30})\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex TwitterUrlRx = new(
+            @"(?:https?://)?(?:www\.)?(?:twitter\.com|x\.com)/(?!home|explore|i/)([a-zA-Z0-9_]{1,15})(?:[/?#]|$)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex TwitterLabeledRx = new(
+            @"(?:twitter|x)\s*[:\-]?\s*@([a-zA-Z0-9_]{1,15})\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public YouTubeCreatorImportService(
             ApplicationDbContext db,
@@ -436,10 +451,52 @@ namespace InfluencerMatch.Infrastructure.Services
                     email = c;
             }
 
-            var ig = InstagramRx.Match(text);
-            var tw = TwitterRx.Match(text);
+            var ig = FirstValidHandle(text, IsValidInstagramHandle, InstagramUrlRx, InstagramLabeledRx);
+            var tw = FirstValidHandle(text, IsValidTwitterHandle, TwitterUrlRx, TwitterLabeledRx);
 
-            return (email, ig.Success ? ig.Groups[1].Value : null, tw.Success ? tw.Groups[1].Value : null);
+            return (email, ig, tw);
+        }
+
+        private static string? FirstValidHandle(string text, Func<string, bool> isValid, params Regex[] patterns)
+        {
+            foreach (var pattern in patterns)
+            {
+                var m = pattern.Match(text);
+                if (!m.Success) continue;
+
+                var handle = m.Groups[1].Value.Trim();
+                if (isValid(handle))
+                    return handle;
+            }
+
+            return null;
+        }
+
+        private static bool IsValidInstagramHandle(string? handle)
+        {
+            if (string.IsNullOrWhiteSpace(handle)) return false;
+
+            var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+            if (h.Length < 2 || h.Length > 30) return false;
+            if (!Regex.IsMatch(h, @"^[a-z0-9._]+$")) return false;
+            if (h.StartsWith('.') || h.EndsWith('.')) return false;
+
+            // Reject common email-domain tokens that can appear after '@' in emails.
+            if (h == "gmail" || h == "yahoo" || h == "hotmail" || h == "outlook" || h == "protonmail") return false;
+            if (h.EndsWith(".com") || h.EndsWith(".net") || h.EndsWith(".org") || h.EndsWith(".in") || h.EndsWith(".co")) return false;
+
+            return true;
+        }
+
+        private static bool IsValidTwitterHandle(string? handle)
+        {
+            if (string.IsNullOrWhiteSpace(handle)) return false;
+
+            var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+            if (h.Length < 2 || h.Length > 15) return false;
+            if (!Regex.IsMatch(h, @"^[a-z0-9_]+$")) return false;
+
+            return true;
         }
 
         // ── Internal helpers ─────────────────────────────────────────────────

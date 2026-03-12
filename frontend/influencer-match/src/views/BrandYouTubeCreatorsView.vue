@@ -10,6 +10,60 @@
         </div>
       </div>
 
+      <div class="row g-3 mb-4" v-if="opportunityRadar || regionalLanguage">
+        <div class="col-12 col-lg-7" v-if="opportunityRadar">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-semibold mb-0">Opportunity Radar</h6>
+                <small class="text-muted">{{ opportunityRadar.category }} · {{ opportunityRadar.country }}</small>
+              </div>
+              <div class="small text-muted mb-2">{{ opportunityRadar.alertSummary }}</div>
+              <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Creator</th>
+                      <th class="text-end">Score</th>
+                      <th class="text-end">Subscribers</th>
+                      <th>Signal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in (opportunityRadar.risingCreators || []).slice(0, 6)" :key="r.creatorId">
+                      <td>{{ r.channelName }}</td>
+                      <td class="text-end">{{ Number(r.growthSignalScore || 0).toFixed(1) }}</td>
+                      <td class="text-end">{{ fmtNum(r.subscribers) }}</td>
+                      <td>{{ r.whyRisingNow }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-5" v-if="regionalLanguage">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body p-3">
+              <h6 class="fw-semibold mb-2">Regional Language Performance</h6>
+              <div class="small text-muted mb-2">Best fit: {{ regionalLanguage.bestFitLanguageRegion || 'N/A' }}</div>
+              <div class="d-flex flex-column gap-2">
+                <div v-for="row in (regionalLanguage.clusters || []).slice(0, 4)" :key="`${row.language}-${row.region}`" class="d-flex justify-content-between align-items-center rounded p-2 bg-light">
+                  <div>
+                    <div class="fw-semibold">{{ row.language }}</div>
+                    <div class="small text-muted">{{ row.region }}</div>
+                  </div>
+                  <div class="text-end">
+                    <div class="small">Engagement {{ Number(row.avgEngagementPercent || 0).toFixed(2) }}%</div>
+                    <div class="small fw-semibold">Views {{ fmtNum(Number(row.avgViews || 0)) }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Filters ─────────────────────────────────────────────────────── -->
       <div class="card border-0 shadow-sm mb-4">
         <div class="card-body p-3">
@@ -277,6 +331,18 @@
             <p class="small text-muted mb-0">{{ fit.explanation }}</p>
           </div>
 
+          <div class="mt-3" v-if="readiness">
+            <h6 class="fw-semibold mb-2">Sponsorship Readiness Index</h6>
+            <div class="row g-2 mb-2">
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Readiness</div><div class="stat-val">{{ Number(readiness.sponsorshipReadinessIndex || 0).toFixed(1) }}</div></div></div>
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Content Hygiene</div><div class="stat-val">{{ Number(readiness.contentHygieneScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Reliability</div><div class="stat-val">{{ Number(readiness.reliabilityScore || 0).toFixed(1) }}</div></div></div>
+            </div>
+            <ul class="small mb-0" v-if="readiness.improvementRoadmap?.length">
+              <li v-for="tip in readiness.improvementRoadmap" :key="tip">{{ tip }}</li>
+            </ul>
+          </div>
+
           <div class="mt-3 text-muted small">
             Last refreshed: {{ detail.creator.lastRefreshedAt ? new Date(detail.creator.lastRefreshedAt).toLocaleDateString() : 'Unknown' }}
           </div>
@@ -288,7 +354,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import api from '../services/api.js';
 
 const creators    = ref([]);
@@ -303,6 +369,9 @@ const detail          = ref(null);
 const detailLoading   = ref(false);
 const insights        = ref(null);
 const fit             = ref(null);
+const readiness       = ref(null);
+const opportunityRadar = ref(null);
+const regionalLanguage = ref(null);
 
 const filters = ref({
   search: '',
@@ -350,9 +419,10 @@ async function openDetail(creator) {
   detail.value          = null;
   insights.value        = null;
   fit.value             = null;
+  readiness.value       = null;
   detailLoading.value   = true;
   try {
-    const [detailRes, insightsRes, fitRes] = await Promise.allSettled([
+    const [detailRes, insightsRes, fitRes, readinessRes] = await Promise.allSettled([
       api.get(`/discovery/youtube-creators/${creator.creatorId}`),
       api.get(`/discovery/youtube-creators/${creator.creatorId}/insights`, {
         params: {
@@ -367,7 +437,8 @@ async function openDetail(creator) {
           brandCountry: null,
           brandLanguage: null,
         }
-      })
+      }),
+      api.get(`/discovery/youtube-creators/${creator.creatorId}/readiness`)
     ]);
 
     if (detailRes.status === 'fulfilled') {
@@ -379,10 +450,41 @@ async function openDetail(creator) {
     if (fitRes.status === 'fulfilled') {
       fit.value = fitRes.value.data;
     }
+    if (readinessRes.status === 'fulfilled') {
+      readiness.value = readinessRes.value.data;
+    }
   } catch (e) {
     console.error(e);
   } finally {
     detailLoading.value = false;
+  }
+}
+
+async function fetchDifferentiatorLayers() {
+  try {
+    const [oppRes, regionalRes] = await Promise.allSettled([
+      api.get('/discovery/opportunity-radar', {
+        params: {
+          category: filters.value.category || null,
+          country: null,
+          language: null,
+          limit: 8,
+        }
+      }),
+      api.get('/discovery/regional-language-performance', {
+        params: {
+          category: filters.value.category || null,
+          country: null,
+          brandLanguage: null,
+        }
+      })
+    ]);
+
+    opportunityRadar.value = oppRes.status === 'fulfilled' ? oppRes.value.data : null;
+    regionalLanguage.value = regionalRes.status === 'fulfilled' ? regionalRes.value.data : null;
+  } catch {
+    opportunityRadar.value = null;
+    regionalLanguage.value = null;
   }
 }
 
@@ -427,7 +529,15 @@ function tierBadge(tier) {
 onMounted(() => {
   fetchCreators();
   fetchCategories();
+  fetchDifferentiatorLayers();
 });
+
+watch(
+  () => filters.value.category,
+  () => {
+    fetchDifferentiatorLayers();
+  }
+);
 </script>
 
 <style scoped>

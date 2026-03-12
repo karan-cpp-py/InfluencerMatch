@@ -101,6 +101,48 @@ namespace InfluencerMatch.API.Controllers
             return Ok(result);
         }
 
+        [HttpGet("{id}/negotiation-intelligence")]
+        public async Task<IActionResult> GetNegotiationIntelligence(int id, [FromQuery] decimal? proposedPrice = null)
+        {
+            var existing = await _service.GetByIdAsync(id);
+            if (existing == null) return NotFound();
+
+            if (existing.BrandId != GetUserId())
+                return Forbid();
+
+            var result = await _advancedAnalytics.GetNegotiationIntelligenceAsync(id, proposedPrice);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+
+        [HttpPost("{id}/creative-brief-intelligence")]
+        public async Task<IActionResult> GetCreativeBriefIntelligence(int id, [FromBody] CreativeBriefRequestDto? dto)
+        {
+            var existing = await _service.GetByIdAsync(id);
+            if (existing == null) return NotFound();
+
+            if (existing.BrandId != GetUserId())
+                return Forbid();
+
+            var result = await _advancedAnalytics.GetCreativeBriefIntelligenceAsync(id, dto?.CampaignGoal);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+
+        [HttpGet("competitor-share-of-voice")]
+        public async Task<IActionResult> GetCompetitorShareOfVoice(
+            [FromQuery] string? brandName = null,
+            [FromQuery] string? primaryCompetitor = null,
+            [FromQuery] string? secondaryCompetitor = null)
+        {
+            var result = await _advancedAnalytics.GetCompetitorShareOfVoiceAsync(
+                string.IsNullOrWhiteSpace(brandName) ? $"brand-{GetUserId()}" : brandName,
+                primaryCompetitor,
+                secondaryCompetitor,
+                null);
+            return Ok(result);
+        }
+
         private int GetUserId()
             => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
     }
@@ -108,5 +150,10 @@ namespace InfluencerMatch.API.Controllers
     public class CampaignForecastRequestDto
     {
         public decimal? BudgetOverride { get; set; }
+    }
+
+    public class CreativeBriefRequestDto
+    {
+        public string? CampaignGoal { get; set; }
     }
 }

@@ -119,4 +119,134 @@ namespace InfluencerMatch.Application.DTOs
         public List<ForecastScenarioDto> BudgetScenarios { get; set; } = new();
         public DateTime CalculatedAt { get; set; }
     }
+
+    public class OpportunityRadarCreatorDto
+    {
+        public int CreatorId { get; set; }
+        public string ChannelName { get; set; } = string.Empty;
+        public string? Category { get; set; }
+        public string? Country { get; set; }
+        public string? Language { get; set; }
+        public long Subscribers { get; set; }
+        public double GrowthSignalScore { get; set; }
+        public string WhyRisingNow { get; set; } = string.Empty;
+    }
+
+    public class CategoryTrendSignalDto
+    {
+        public string Region { get; set; } = string.Empty;
+        public string Language { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public double TrendScore { get; set; }
+        public string Direction { get; set; } = "flat";
+    }
+
+    public class OpportunityRadarDto
+    {
+        public string Category { get; set; } = "General";
+        public string Country { get; set; } = "GLOBAL";
+        public string Language { get; set; } = "Any";
+        public List<OpportunityRadarCreatorDto> RisingCreators { get; set; } = new();
+        public List<CategoryTrendSignalDto> CategoryTrends { get; set; } = new();
+        public string AlertSummary { get; set; } = string.Empty;
+        public DateTime CalculatedAt { get; set; }
+    }
+
+    public class SponsorshipReadinessDto
+    {
+        public int CreatorId { get; set; }
+        public double SponsorshipReadinessIndex { get; set; }
+        public double ReliabilityScore { get; set; }
+        public double ContentHygieneScore { get; set; }
+        public double BrandFitStabilityScore { get; set; }
+        public double ConversionProxyScore { get; set; }
+        public List<string> ImprovementRoadmap { get; set; } = new();
+        public DateTime CalculatedAt { get; set; }
+    }
+
+    public class PriceRoiPointDto
+    {
+        public double Price { get; set; }
+        public double PredictedViews { get; set; }
+        public double PredictedEngagements { get; set; }
+        public double PredictedRoiLow { get; set; }
+        public double PredictedRoiHigh { get; set; }
+    }
+
+    public class NegotiationIntelligenceDto
+    {
+        public int CampaignId { get; set; }
+        public double FairPriceMin { get; set; }
+        public double FairPriceMedian { get; set; }
+        public double FairPriceMax { get; set; }
+        public string RiskProfile { get; set; } = "Balanced";
+        public string SuggestedContractStructure { get; set; } = string.Empty;
+        public List<PriceRoiPointDto> PriceRoiBand { get; set; } = new();
+        public DateTime CalculatedAt { get; set; }
+    }
+
+    public class CreatorMixSuggestionDto
+    {
+        public string Segment { get; set; } = string.Empty;
+        public int CreatorCount { get; set; }
+        public string Why { get; set; } = string.Empty;
+    }
+
+    public class BriefVariantDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Angle { get; set; } = string.Empty;
+        public string HookTemplate { get; set; } = string.Empty;
+        public string CtaTemplate { get; set; } = string.Empty;
+        public double PredictedLiftPercent { get; set; }
+    }
+
+    public class CreativeBriefIntelligenceDto
+    {
+        public int CampaignId { get; set; }
+        public string CampaignGoal { get; set; } = "Awareness";
+        public List<CreatorMixSuggestionDto> SuggestedCreatorMix { get; set; } = new();
+        public List<string> SuggestedContentAngles { get; set; } = new();
+        public string BestBriefStyle { get; set; } = string.Empty;
+        public List<BriefVariantDto> TestVariants { get; set; } = new();
+        public DateTime CalculatedAt { get; set; }
+    }
+
+    public class CompetitorSovRowDto
+    {
+        public string CompetitorBrand { get; set; } = string.Empty;
+        public int MentionedByCreators { get; set; }
+        public int MentionedVideos { get; set; }
+        public double ShareOfVoicePercent { get; set; }
+        public string Trend { get; set; } = "flat";
+    }
+
+    public class CompetitorShareOfVoiceDto
+    {
+        public string BrandName { get; set; } = string.Empty;
+        public string Category { get; set; } = "General";
+        public List<CompetitorSovRowDto> Competitors { get; set; } = new();
+        public List<string> WhiteSpaceOpportunities { get; set; } = new();
+        public DateTime CalculatedAt { get; set; }
+    }
+
+    public class LanguageClusterDto
+    {
+        public string Language { get; set; } = string.Empty;
+        public string Region { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public int CreatorCount { get; set; }
+        public double AvgEngagementPercent { get; set; }
+        public double AvgViews { get; set; }
+    }
+
+    public class RegionalLanguagePerformanceDto
+    {
+        public string Category { get; set; } = "General";
+        public string Country { get; set; } = "GLOBAL";
+        public string BrandLanguage { get; set; } = "Any";
+        public List<LanguageClusterDto> Clusters { get; set; } = new();
+        public string BestFitLanguageRegion { get; set; } = string.Empty;
+        public DateTime CalculatedAt { get; set; }
+    }
 }

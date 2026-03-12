@@ -32,5 +32,39 @@ namespace InfluencerMatch.Application.Interfaces
             int campaignId,
             decimal? budgetOverride = null,
             CancellationToken ct = default);
+
+        Task<OpportunityRadarDto> GetOpportunityRadarAsync(
+            string? category,
+            string? country,
+            string? language,
+            int limit = 10,
+            CancellationToken ct = default);
+
+        Task<SponsorshipReadinessDto?> GetSponsorshipReadinessAsync(
+            int creatorId,
+            CancellationToken ct = default);
+
+        Task<NegotiationIntelligenceDto?> GetNegotiationIntelligenceAsync(
+            int campaignId,
+            decimal? proposedPrice = null,
+            CancellationToken ct = default);
+
+        Task<CreativeBriefIntelligenceDto?> GetCreativeBriefIntelligenceAsync(
+            int campaignId,
+            string? campaignGoal = null,
+            CancellationToken ct = default);
+
+        Task<CompetitorShareOfVoiceDto> GetCompetitorShareOfVoiceAsync(
+            string brandName,
+            string? category,
+            string? country,
+            string? language,
+            CancellationToken ct = default);
+
+        Task<RegionalLanguagePerformanceDto> GetRegionalLanguagePerformanceAsync(
+            string? category,
+            string? country,
+            string? brandLanguage,
+            CancellationToken ct = default);
     }
 }

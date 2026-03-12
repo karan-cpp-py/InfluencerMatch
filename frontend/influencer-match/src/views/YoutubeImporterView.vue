@@ -126,9 +126,9 @@
                 <td>{{ row.country || '—' }} / {{ row.category || '—' }}</td>
                 <td>
                   <span v-if="row.email" class="badge bg-success me-1" title="Email found">📧</span>
-                  <span v-if="row.instagramHandle" class="badge bg-warning text-dark me-1" title="Instagram found">📸</span>
-                  <span v-if="row.twitterHandle" class="badge bg-info text-dark me-1" title="X/Twitter found">🐦</span>
-                  <span v-if="!row.email && !row.instagramHandle && !row.twitterHandle" class="text-muted small">None</span>
+                  <span v-if="isValidInstagramHandle(row.instagramHandle)" class="badge bg-warning text-dark me-1" title="Instagram found">📸</span>
+                  <span v-if="isValidTwitterHandle(row.twitterHandle)" class="badge bg-info text-dark me-1" title="X/Twitter found">🐦</span>
+                  <span v-if="!row.email && !isValidInstagramHandle(row.instagramHandle) && !isValidTwitterHandle(row.twitterHandle)" class="text-muted small">None</span>
                 </td>
                 <td>
                   <span class="badge" :class="statusBadge(row.status)" :title="row.error || ''">{{ row.status }}</span>
@@ -243,9 +243,9 @@
                   <td>{{ c.country || '—' }}</td>
                   <td>
                     <div v-if="c.publicEmail" class="small"><span class="text-muted">📧</span> {{ c.publicEmail }}</div>
-                    <div v-if="c.instagramHandle" class="small"><span class="text-muted">📸</span> @{{ c.instagramHandle }}</div>
-                    <div v-if="c.twitterHandle" class="small"><span class="text-muted">🐦</span> @{{ c.twitterHandle }}</div>
-                    <span v-if="!c.publicEmail && !c.instagramHandle && !c.twitterHandle" class="text-muted small">—</span>
+                    <div v-if="isValidInstagramHandle(c.instagramHandle)" class="small"><span class="text-muted">📸</span> @{{ c.instagramHandle }}</div>
+                    <div v-if="isValidTwitterHandle(c.twitterHandle)" class="small"><span class="text-muted">🐦</span> @{{ c.twitterHandle }}</div>
+                    <span v-if="!c.publicEmail && !isValidInstagramHandle(c.instagramHandle) && !isValidTwitterHandle(c.twitterHandle)" class="text-muted small">—</span>
                   </td>
                   <td class="text-muted small">{{ c.lastRefreshedAt ? fmtDate(c.lastRefreshedAt) : fmtDate(c.createdAt) }}</td>
                 </tr>
@@ -417,6 +417,23 @@ function statusBadge(status) {
     updated: 'bg-primary',
     skipped: 'bg-secondary',
   }[status] ?? 'bg-secondary'
+}
+
+function isValidInstagramHandle(handle) {
+  if (!handle) return false
+  const h = String(handle).trim().replace(/^@+/, '').toLowerCase()
+  if (!/^[a-z0-9._]{2,30}$/.test(h)) return false
+  if (h.startsWith('.') || h.endsWith('.')) return false
+  if (h.endsWith('.com') || h.endsWith('.net') || h.endsWith('.org') || h.endsWith('.in') || h.endsWith('.co')) return false
+  if (['gmail', 'yahoo', 'hotmail', 'outlook', 'protonmail'].includes(h)) return false
+  return true
+}
+
+function isValidTwitterHandle(handle) {
+  if (!handle) return false
+  const h = String(handle).trim().replace(/^@+/, '').toLowerCase()
+  if (!/^[a-z0-9_]{2,15}$/.test(h)) return false
+  return true
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────

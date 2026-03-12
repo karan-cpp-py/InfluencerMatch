@@ -266,6 +266,374 @@ namespace InfluencerMatch.Infrastructure.Services
             return forecast;
         }
 
+        public async Task<OpportunityRadarDto> GetOpportunityRadarAsync(
+            string? category,
+            string? country,
+            string? language,
+            int limit = 10,
+            CancellationToken ct = default)
+        {
+            var normalizedCategory = string.IsNullOrWhiteSpace(category) ? "General" : category.Trim();
+            var normalizedCountry = string.IsNullOrWhiteSpace(country) ? "GLOBAL" : country.Trim();
+            var normalizedLanguage = string.IsNullOrWhiteSpace(language) ? "Any" : language.Trim();
+
+            var creatorQuery = _db.Creators.AsNoTracking().Where(c => c.UserId == null);
+            if (!string.IsNullOrWhiteSpace(category))
+                creatorQuery = creatorQuery.Where(c => c.Category != null && c.Category == category);
+            if (!string.IsNullOrWhiteSpace(country))
+                creatorQuery = creatorQuery.Where(c => c.Country != null && c.Country == country);
+            if (!string.IsNullOrWhiteSpace(language))
+                creatorQuery = creatorQuery.Where(c => c.Language != null && EF.Functions.ILike(c.Language, $"%{language}%"));
+
+            var creators = await creatorQuery
+                .OrderByDescending(c => c.LastRefreshedAt ?? c.UpdatedAt ?? c.CreatedAt)
+                .Take(120)
+                .ToListAsync(ct);
+
+            var creatorIds = creators.Select(c => c.CreatorId).ToList();
+            var growthRows = await _db.CreatorGrowth.AsNoTracking()
+                .Where(g => creatorIds.Contains(g.CreatorId))
+                .OrderByDescending(g => g.RecordedAt)
+                .ToListAsync(ct);
+
+            var rising = creators.Select(c =>
+            {
+                var g = growthRows.Where(x => x.CreatorId == c.CreatorId).Take(8).OrderBy(x => x.RecordedAt).ToList();
+                var growthSignal = ComputeGrowthSignal(c, g);
+                return new OpportunityRadarCreatorDto
+                {
+                    CreatorId = c.CreatorId,
+                    ChannelName = c.ChannelName,
+                    Category = c.Category,
+                    Country = c.Country,
+                    Language = c.Language,
+                    Subscribers = c.Subscribers,
+                    GrowthSignalScore = growthSignal,
+                    WhyRisingNow = growthSignal >= 75
+                        ? "Subscriber momentum and engagement velocity are accelerating."
+                        : growthSignal >= 55
+                            ? "Steady growth with healthy engagement trend."
+                            : "Early signal detected; monitor this creator for breakout movement."
+                };
+            })
+            .OrderByDescending(x => x.GrowthSignalScore)
+            .ThenByDescending(x => x.Subscribers)
+            .Take(Math.Clamp(limit, 3, 30))
+            .ToList();
+
+            var categoryTrends = creators
+                .GroupBy(c => new { Region = c.Country ?? "GLOBAL", Language = c.Language ?? "Any", Category = c.Category ?? "General" })
+                .Select(g =>
+                {
+                    var trendScore = g.Average(c => Math.Min(100, (c.EngagementRate * 100 * 12) + (Math.Log10(Math.Max(1000, c.AvgViews + 1)) * 12)));
+                    return new CategoryTrendSignalDto
+                    {
+                        Region = g.Key.Region,
+                        Language = g.Key.Language,
+                        Category = g.Key.Category,
+                        TrendScore = Math.Round(trendScore, 2),
+                        Direction = trendScore >= 68 ? "up" : trendScore <= 45 ? "down" : "flat"
+                    };
+                })
+                .OrderByDescending(x => x.TrendScore)
+                .Take(10)
+                .ToList();
+
+            var dto = new OpportunityRadarDto
+            {
+                Category = normalizedCategory,
+                Country = normalizedCountry,
+                Language = normalizedLanguage,
+                RisingCreators = rising,
+                CategoryTrends = categoryTrends,
+                AlertSummary = rising.Any()
+                    ? $"{rising.First().ChannelName} is currently rising fastest for {normalizedCategory} ({normalizedCountry}/{normalizedLanguage})."
+                    : "No strong rising creator signal found for this filter yet.",
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertOpportunityRadarSnapshotAsync(dto, ct);
+            return dto;
+        }
+
+        public async Task<SponsorshipReadinessDto?> GetSponsorshipReadinessAsync(int creatorId, CancellationToken ct = default)
+        {
+            var creator = await _db.Creators.AsNoTracking().FirstOrDefaultAsync(c => c.CreatorId == creatorId, ct);
+            if (creator == null) return null;
+
+            var videos = await _db.Videos.AsNoTracking()
+                .Where(v => v.CreatorId == creatorId)
+                .OrderByDescending(v => v.PublishedAt)
+                .Take(30)
+                .ToListAsync(ct);
+
+            var reliability = Clamp100((creator.VideoCount >= 20 ? 70 : 40) + Math.Min(30, creator.EngagementRate * 100 * 4));
+            var hygiene = BuildBrandSafety(videos);
+            var fitStability = Clamp100(60 + Math.Min(25, creator.EngagementRate * 100 * 3) - Math.Min(20, StdDev(videos.Select(v => v.EngagementRate).ToList()) * 800));
+            var conversionProxy = Clamp100((Math.Log10(Math.Max(1000, creator.AvgViews + 1)) * 18) + (creator.EngagementRate * 100 * 8));
+            var readiness = Math.Round((reliability * 0.30) + (hygiene * 0.20) + (fitStability * 0.25) + (conversionProxy * 0.25), 2);
+
+            var roadmap = new List<string>();
+            if (reliability < 65) roadmap.Add("Increase posting consistency with a weekly cadence and predictable content slots.");
+            if (hygiene < 70) roadmap.Add("Tighten content hygiene: avoid risky topics and improve title/thumbnail quality control.");
+            if (fitStability < 65) roadmap.Add("Stabilize brand fit by narrowing niche pillars and reducing abrupt topic swings.");
+            if (conversionProxy < 65) roadmap.Add("Add clearer CTA flows and measurable conversion hooks in description and pinned comments.");
+            if (!roadmap.Any()) roadmap.Add("Maintain your current consistency and run controlled A/B tests for offer and CTA optimization.");
+
+            var dto = new SponsorshipReadinessDto
+            {
+                CreatorId = creatorId,
+                SponsorshipReadinessIndex = readiness,
+                ReliabilityScore = Math.Round(reliability, 2),
+                ContentHygieneScore = Math.Round(hygiene, 2),
+                BrandFitStabilityScore = Math.Round(fitStability, 2),
+                ConversionProxyScore = Math.Round(conversionProxy, 2),
+                ImprovementRoadmap = roadmap,
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertCreatorReadinessSnapshotAsync(dto, ct);
+            return dto;
+        }
+
+        public async Task<NegotiationIntelligenceDto?> GetNegotiationIntelligenceAsync(
+            int campaignId,
+            decimal? proposedPrice = null,
+            CancellationToken ct = default)
+        {
+            var campaign = await _db.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.CampaignId == campaignId, ct);
+            if (campaign == null) return null;
+
+            var outcome = await GetCampaignOutcomeAnalyticsAsync(campaignId, ct) ?? new CampaignOutcomeAnalyticsDto { CampaignId = campaignId };
+            var basePrice = (double)(proposedPrice ?? campaign.Budget);
+
+            var perfFactor = Math.Clamp((outcome.EngagementRate * 100) / 3.5, 0.55, 1.8);
+            var fairMedian = Math.Round(basePrice * perfFactor, 2);
+            var fairMin = Math.Round(fairMedian * 0.75, 2);
+            var fairMax = Math.Round(fairMedian * 1.35, 2);
+
+            var riskProfile = outcome.OverperformerCount > outcome.UnderperformerCount
+                ? "Performance-Forward"
+                : outcome.UnderperformerCount > outcome.OverperformerCount
+                    ? "Risk-Controlled"
+                    : "Balanced";
+
+            var contract = riskProfile == "Performance-Forward"
+                ? "60% fixed + 40% performance kicker tied to engaged views and CTR milestones."
+                : riskProfile == "Risk-Controlled"
+                    ? "80% fixed + 20% holdback released on delivery and minimum engagement threshold."
+                    : "70% fixed + 30% milestone release across concept, publish, and performance checkpoints.";
+
+            var roiBand = new List<PriceRoiPointDto>();
+            foreach (var p in new[] { fairMin, fairMedian, fairMax })
+            {
+                var predViews = Math.Max(100, outcome.EngagedViews * 3.1);
+                var predEng = Math.Max(10, predViews * Math.Max(0.01, outcome.EngagementRate));
+                var roiBase = predEng > 0 ? (predEng / p) : 0;
+                roiBand.Add(new PriceRoiPointDto
+                {
+                    Price = p,
+                    PredictedViews = Math.Round(predViews, 0),
+                    PredictedEngagements = Math.Round(predEng, 0),
+                    PredictedRoiLow = Math.Round(roiBase * 0.75, 4),
+                    PredictedRoiHigh = Math.Round(roiBase * 1.20, 4)
+                });
+            }
+
+            var dto = new NegotiationIntelligenceDto
+            {
+                CampaignId = campaignId,
+                FairPriceMin = fairMin,
+                FairPriceMedian = fairMedian,
+                FairPriceMax = fairMax,
+                RiskProfile = riskProfile,
+                SuggestedContractStructure = contract,
+                PriceRoiBand = roiBand,
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertCampaignStrategySnapshotAsync(campaignId, dto, null, ct);
+            return dto;
+        }
+
+        public async Task<CreativeBriefIntelligenceDto?> GetCreativeBriefIntelligenceAsync(
+            int campaignId,
+            string? campaignGoal = null,
+            CancellationToken ct = default)
+        {
+            var campaign = await _db.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.CampaignId == campaignId, ct);
+            if (campaign == null) return null;
+
+            var goal = string.IsNullOrWhiteSpace(campaignGoal) ? "Awareness" : campaignGoal.Trim();
+            var cat = campaign.Category ?? "General";
+            var loc = campaign.TargetLocation ?? "Global";
+
+            var mix = new List<CreatorMixSuggestionDto>
+            {
+                new CreatorMixSuggestionDto { Segment = "Mid-tier Specialists", CreatorCount = 4, Why = "Best balance between CPM efficiency and conversion intent in niche categories." },
+                new CreatorMixSuggestionDto { Segment = "Micro Community Leaders", CreatorCount = 6, Why = "High trust density, ideal for comment-led conversion and localized targeting." },
+                new CreatorMixSuggestionDto { Segment = "Macro Amplifiers", CreatorCount = 1, Why = "Adds top-of-funnel reach for awareness spikes and social proof." },
+            };
+
+            var angles = new List<string>
+            {
+                $"Problem-solution narrative for {cat} with local proof in {loc}.",
+                "UGC-first testimonial angle with before/after payoff framing.",
+                "Myth-busting angle with measurable benchmark and CTA cliffhanger.",
+            };
+
+            var style = goal.Contains("conversion", StringComparison.OrdinalIgnoreCase)
+                ? "Benefit-Objection-Offer"
+                : goal.Contains("awareness", StringComparison.OrdinalIgnoreCase)
+                    ? "Story-led Social Proof"
+                    : "Comparison-led Explainer";
+
+            var variants = new List<BriefVariantDto>
+            {
+                new BriefVariantDto { Name = "Variant A", Angle = "Story-led", HookTemplate = "I was struggling with X until...", CtaTemplate = "Try this workflow and share your result.", PredictedLiftPercent = 8.5 },
+                new BriefVariantDto { Name = "Variant B", Angle = "Benchmark-led", HookTemplate = "We tested X vs Y in real usage...", CtaTemplate = "Comment your current setup for a personalized recommendation.", PredictedLiftPercent = 11.3 },
+                new BriefVariantDto { Name = "Variant C", Angle = "Challenge format", HookTemplate = "Can this beat my old method in 7 days?", CtaTemplate = "Join the challenge and tag your progress.", PredictedLiftPercent = 9.1 },
+            };
+
+            var dto = new CreativeBriefIntelligenceDto
+            {
+                CampaignId = campaignId,
+                CampaignGoal = goal,
+                SuggestedCreatorMix = mix,
+                SuggestedContentAngles = angles,
+                BestBriefStyle = style,
+                TestVariants = variants,
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertCampaignStrategySnapshotAsync(campaignId, null, dto, ct);
+            return dto;
+        }
+
+        public async Task<CompetitorShareOfVoiceDto> GetCompetitorShareOfVoiceAsync(
+            string brandName,
+            string? category,
+            string? country,
+            string? language,
+            CancellationToken ct = default)
+        {
+            var cleanBrand = (brandName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(cleanBrand))
+            {
+                return new CompetitorShareOfVoiceDto { BrandName = "Unknown", Category = category ?? "General", CalculatedAt = DateTime.UtcNow };
+            }
+
+            var pool = await _db.BrandMentions.AsNoTracking()
+                .Join(_db.Creators.AsNoTracking(), m => m.CreatorId, c => c.CreatorId, (m, c) => new { m.BrandName, m.VideoId, m.CreatorId, c.Category, c.Country, c.Language })
+                .Where(x => category == null || x.Category == category)
+                .Where(x => country == null || x.Country == country)
+                .Where(x => language == null || (x.Language != null && EF.Functions.ILike(x.Language, $"%{language}%")))
+                .ToListAsync(ct);
+
+            var grouped = pool
+                .GroupBy(x => x.BrandName)
+                .Select(g => new
+                {
+                    Brand = g.Key,
+                    Creators = g.Select(x => x.CreatorId).Distinct().Count(),
+                    Videos = g.Select(x => x.VideoId).Distinct().Count()
+                })
+                .OrderByDescending(x => x.Videos)
+                .Take(8)
+                .ToList();
+
+            var totalVideos = Math.Max(1, grouped.Sum(x => x.Videos));
+            var competitors = grouped
+                .Where(x => !x.Brand.Equals(cleanBrand, StringComparison.OrdinalIgnoreCase))
+                .Select(x => new CompetitorSovRowDto
+                {
+                    CompetitorBrand = x.Brand,
+                    MentionedByCreators = x.Creators,
+                    MentionedVideos = x.Videos,
+                    ShareOfVoicePercent = Math.Round((x.Videos / (double)totalVideos) * 100, 2),
+                    Trend = x.Videos >= 8 ? "up" : x.Videos <= 2 ? "down" : "flat"
+                })
+                .OrderByDescending(x => x.ShareOfVoicePercent)
+                .Take(6)
+                .ToList();
+
+            var whiteSpace = new List<string>
+            {
+                "Low creator overlap in regional-language clusters indicates room for first-mover campaigns.",
+                "Competitor mentions are concentrated in a few creators; diversify with micro creators for cost-efficient share gain.",
+                "Briefs with educational hooks appear underutilized relative to entertainment-heavy competitor creative."
+            };
+
+            var dto = new CompetitorShareOfVoiceDto
+            {
+                BrandName = cleanBrand,
+                Category = category ?? "General",
+                Competitors = competitors,
+                WhiteSpaceOpportunities = whiteSpace,
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertBrandSovSnapshotAsync(cleanBrand, category, country, language, dto, null, ct);
+            return dto;
+        }
+
+        public async Task<RegionalLanguagePerformanceDto> GetRegionalLanguagePerformanceAsync(
+            string? category,
+            string? country,
+            string? brandLanguage,
+            CancellationToken ct = default)
+        {
+            var query = _db.Creators.AsNoTracking().Where(c => c.UserId == null);
+            if (!string.IsNullOrWhiteSpace(category))
+                query = query.Where(c => c.Category == category);
+            if (!string.IsNullOrWhiteSpace(country))
+                query = query.Where(c => c.Country == country);
+
+            var creators = await query
+                .OrderByDescending(c => c.EngagementRate)
+                .Take(250)
+                .ToListAsync(ct);
+
+            var clusters = creators
+                .GroupBy(c => new
+                {
+                    Language = string.IsNullOrWhiteSpace(c.Language) ? "Unknown" : c.Language!,
+                    Region = string.IsNullOrWhiteSpace(c.Country) ? "GLOBAL" : c.Country!,
+                    Category = string.IsNullOrWhiteSpace(c.Category) ? "General" : c.Category!
+                })
+                .Select(g => new LanguageClusterDto
+                {
+                    Language = g.Key.Language,
+                    Region = g.Key.Region,
+                    Category = g.Key.Category,
+                    CreatorCount = g.Count(),
+                    AvgEngagementPercent = Math.Round(g.Average(x => x.EngagementRate * 100), 2),
+                    AvgViews = Math.Round(g.Average(x => x.AvgViews), 0)
+                })
+                .OrderByDescending(x => x.AvgEngagementPercent)
+                .Take(12)
+                .ToList();
+
+            var best = clusters.FirstOrDefault(c =>
+                string.IsNullOrWhiteSpace(brandLanguage)
+                || c.Language.Contains(brandLanguage!, StringComparison.OrdinalIgnoreCase)
+                || brandLanguage!.Contains(c.Language, StringComparison.OrdinalIgnoreCase))
+                ?? clusters.FirstOrDefault();
+
+            var dto = new RegionalLanguagePerformanceDto
+            {
+                Category = category ?? "General",
+                Country = country ?? "GLOBAL",
+                BrandLanguage = brandLanguage ?? "Any",
+                Clusters = clusters,
+                BestFitLanguageRegion = best == null ? "No data" : $"{best.Language} - {best.Region}",
+                CalculatedAt = DateTime.UtcNow
+            };
+
+            await UpsertBrandSovSnapshotAsync("regional-layer", category, country, brandLanguage, null, dto, ct);
+            return dto;
+        }
+
         private static ForecastScenarioDto BuildScenario(string name, double views, double engagements, double budget)
         {
             return new ForecastScenarioDto
@@ -679,6 +1047,122 @@ namespace InfluencerMatch.Infrastructure.Services
 
             existing.CalculatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task UpsertOpportunityRadarSnapshotAsync(OpportunityRadarDto dto, CancellationToken ct)
+        {
+            var existing = await _db.OpportunityRadarSnapshots
+                .FirstOrDefaultAsync(x => x.Category == dto.Category && x.Country == dto.Country && x.Language == dto.Language, ct);
+            if (existing == null)
+            {
+                existing = new OpportunityRadarSnapshot
+                {
+                    Category = dto.Category,
+                    Country = dto.Country,
+                    Language = dto.Language
+                };
+                _db.OpportunityRadarSnapshots.Add(existing);
+            }
+
+            existing.RisingCreatorsJson = JsonSerializer.Serialize(dto.RisingCreators);
+            existing.CategoryTrendsJson = JsonSerializer.Serialize(dto.CategoryTrends);
+            existing.CalculatedAt = dto.CalculatedAt;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task UpsertCreatorReadinessSnapshotAsync(SponsorshipReadinessDto dto, CancellationToken ct)
+        {
+            var existing = await _db.CreatorReadinessSnapshots.FirstOrDefaultAsync(x => x.CreatorId == dto.CreatorId, ct);
+            if (existing == null)
+            {
+                existing = new CreatorReadinessSnapshot { CreatorId = dto.CreatorId };
+                _db.CreatorReadinessSnapshots.Add(existing);
+            }
+
+            existing.SponsorshipReadinessIndex = dto.SponsorshipReadinessIndex;
+            existing.ReliabilityScore = dto.ReliabilityScore;
+            existing.ContentHygieneScore = dto.ContentHygieneScore;
+            existing.BrandFitStabilityScore = dto.BrandFitStabilityScore;
+            existing.ConversionProxyScore = dto.ConversionProxyScore;
+            existing.ReadinessRoadmapJson = JsonSerializer.Serialize(dto.ImprovementRoadmap);
+            existing.CalculatedAt = dto.CalculatedAt;
+
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task UpsertCampaignStrategySnapshotAsync(
+            int campaignId,
+            NegotiationIntelligenceDto? negotiation,
+            CreativeBriefIntelligenceDto? brief,
+            CancellationToken ct)
+        {
+            var existing = await _db.CampaignStrategySnapshots.FirstOrDefaultAsync(x => x.CampaignId == campaignId, ct);
+            if (existing == null)
+            {
+                existing = new CampaignStrategySnapshot { CampaignId = campaignId };
+                _db.CampaignStrategySnapshots.Add(existing);
+            }
+
+            if (negotiation != null)
+                existing.NegotiationIntelligenceJson = JsonSerializer.Serialize(negotiation);
+            if (brief != null)
+                existing.CreativeBriefIntelligenceJson = JsonSerializer.Serialize(brief);
+
+            existing.CalculatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task UpsertBrandSovSnapshotAsync(
+            string brandName,
+            string? category,
+            string? country,
+            string? language,
+            CompetitorShareOfVoiceDto? competitor,
+            RegionalLanguagePerformanceDto? regional,
+            CancellationToken ct)
+        {
+            var keyCategory = category ?? "General";
+            var keyCountry = country ?? "GLOBAL";
+            var keyLanguage = language ?? "Any";
+            var keyBrand = string.IsNullOrWhiteSpace(brandName) ? "unknown" : brandName;
+
+            var existing = await _db.BrandSovSnapshots
+                .FirstOrDefaultAsync(x => x.BrandName == keyBrand && x.Category == keyCategory && x.Country == keyCountry && x.Language == keyLanguage, ct);
+            if (existing == null)
+            {
+                existing = new BrandSovSnapshot
+                {
+                    BrandName = keyBrand,
+                    Category = keyCategory,
+                    Country = keyCountry,
+                    Language = keyLanguage
+                };
+                _db.BrandSovSnapshots.Add(existing);
+            }
+
+            if (competitor != null)
+                existing.CompetitorSovJson = JsonSerializer.Serialize(competitor);
+            if (regional != null)
+                existing.RegionalLanguagePerformanceJson = JsonSerializer.Serialize(regional);
+
+            existing.CalculatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private static double ComputeGrowthSignal(Creator creator, List<CreatorGrowth> growthRows)
+        {
+            var engagementScore = Clamp100(creator.EngagementRate * 100 * 12);
+            var sizeScore = Clamp100(Math.Log10(Math.Max(1000, creator.Subscribers + 1)) * 20);
+
+            if (growthRows.Count < 2)
+                return Math.Round((engagementScore * 0.55) + (sizeScore * 0.45), 2);
+
+            var first = growthRows.First().Subscribers;
+            var last = growthRows.Last().Subscribers;
+            var growthPct = first > 0 ? ((last - first) / (double)first) * 100 : 0;
+            var growthScore = Clamp100(50 + growthPct * 2.2);
+
+            return Math.Round((growthScore * 0.5) + (engagementScore * 0.3) + (sizeScore * 0.2), 2);
         }
 
         private static double StdDev(List<double> values)

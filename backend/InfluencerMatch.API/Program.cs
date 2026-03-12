@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using InfluencerMatch.API.Configuration;
 using Microsoft.AspNetCore.Http;
@@ -268,6 +269,60 @@ using (var scope = app.Services.CreateScope())
     await planService.SeedDefaultPlansAsync();
 }
 
+// One-time maintenance mode (no HTTP server):
+// dotnet run -- --cleanup-invalid-social-handles
+if (args.Any(a => string.Equals(a, "--cleanup-invalid-social-handles", StringComparison.OrdinalIgnoreCase)))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+    var creators = await db.Creators
+        .Where(c => c.InstagramHandle != null || c.TwitterHandle != null)
+        .ToListAsync();
+
+    var scanned = 0;
+    var affectedRows = 0;
+    var instagramCleared = 0;
+    var twitterCleared = 0;
+
+    foreach (var creator in creators)
+    {
+        scanned++;
+
+        var originalIg = creator.InstagramHandle;
+        var originalTw = creator.TwitterHandle;
+
+        var normalizedIg = NormalizeInstagramHandle(originalIg);
+        var normalizedTw = NormalizeTwitterHandle(originalTw);
+
+        if (!string.Equals(originalIg, normalizedIg, StringComparison.Ordinal))
+        {
+            creator.InstagramHandle = normalizedIg;
+            if (originalIg != null && normalizedIg == null) instagramCleared++;
+        }
+
+        if (!string.Equals(originalTw, normalizedTw, StringComparison.Ordinal))
+        {
+            creator.TwitterHandle = normalizedTw;
+            if (originalTw != null && normalizedTw == null) twitterCleared++;
+        }
+
+        if (!string.Equals(originalIg, creator.InstagramHandle, StringComparison.Ordinal)
+            || !string.Equals(originalTw, creator.TwitterHandle, StringComparison.Ordinal))
+        {
+            affectedRows++;
+        }
+    }
+
+    if (affectedRows > 0)
+    {
+        await db.SaveChangesAsync();
+    }
+
+    Console.WriteLine($"cleanup-invalid-social-handles scanned={scanned} affectedRows={affectedRows} instagramCleared={instagramCleared} twitterCleared={twitterCleared}");
+    return;
+}
+
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
@@ -292,3 +347,27 @@ if (!string.IsNullOrWhiteSpace(port))
 }
 
 app.Run();
+
+static string? NormalizeInstagramHandle(string? handle)
+{
+    if (string.IsNullOrWhiteSpace(handle)) return null;
+
+    var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+    if (!Regex.IsMatch(h, @"^[a-z0-9._]{2,30}$")) return null;
+    if (h.StartsWith('.') || h.EndsWith('.')) return null;
+
+    if (h == "gmail" || h == "yahoo" || h == "hotmail" || h == "outlook" || h == "protonmail") return null;
+    if (h.EndsWith(".com") || h.EndsWith(".net") || h.EndsWith(".org") || h.EndsWith(".in") || h.EndsWith(".co")) return null;
+
+    return h;
+}
+
+static string? NormalizeTwitterHandle(string? handle)
+{
+    if (string.IsNullOrWhiteSpace(handle)) return null;
+
+    var h = handle.Trim().TrimStart('@').ToLowerInvariant();
+    if (!Regex.IsMatch(h, @"^[a-z0-9_]{2,15}$")) return null;
+
+    return h;
+}
