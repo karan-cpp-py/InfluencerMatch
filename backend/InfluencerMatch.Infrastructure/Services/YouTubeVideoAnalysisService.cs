@@ -1,15 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace InfluencerMatch.Infrastructure.Services
 {
     public class YouTubeVideoAnalysisService : IYouTubeVideoAnalysisService
     {
+        private readonly IHttpClientFactory _http;
+        private readonly ILogger<YouTubeVideoAnalysisService> _logger;
+        private readonly string? _apiKey;
+
         private static readonly string[] ConfirmedCollabKeywords =
         {
             "sponsored", "paid partnership", "in collaboration with", "partnered with", "this video is sponsored"
@@ -20,25 +28,105 @@ namespace InfluencerMatch.Infrastructure.Services
             "affiliate", "i earn a commission", "use code", "promo code", "discount code", "sign up", "free trial", "use my link", "download"
         };
 
-        private static readonly string[] PositiveWords = { "love", "great", "awesome", "helpful", "amazing", "good", "best", "nice", "super" };
-        private static readonly string[] NegativeWords = { "bad", "worst", "boring", "fake", "hate", "waste", "misleading", "poor", "scam" };
+        private static readonly Dictionary<string, double> PositiveWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["love"] = 2.0, ["great"] = 1.8, ["awesome"] = 1.9, ["helpful"] = 1.6, ["amazing"] = 2.0,
+            ["good"] = 1.2, ["best"] = 1.5, ["nice"] = 1.1, ["super"] = 1.2, ["excellent"] = 2.0,
+            ["clear"] = 1.0, ["informative"] = 1.4, ["thanks"] = 1.1, ["thank you"] = 1.4,
+        };
+        private static readonly Dictionary<string, double> NegativeWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["bad"] = 1.5, ["worst"] = 2.0, ["boring"] = 1.4, ["fake"] = 1.8, ["hate"] = 2.0,
+            ["waste"] = 1.7, ["misleading"] = 1.8, ["poor"] = 1.6, ["scam"] = 2.0,
+            ["confusing"] = 1.2, ["unclear"] = 1.1, ["clickbait"] = 1.6,
+        };
+
+        private static readonly Dictionary<string, string[]> EmotionLexicon = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["joy"] = new[] { "love", "great", "awesome", "amazing", "happy", "enjoy", "fun", "best" },
+            ["anger"] = new[] { "hate", "worst", "scam", "fake", "angry", "annoying", "trash" },
+            ["sadness"] = new[] { "sad", "disappointed", "upset", "unfortunately" },
+            ["fear"] = new[] { "afraid", "scared", "worry", "dangerous", "risk" },
+            ["surprise"] = new[] { "wow", "unexpected", "surprised", "shocking" },
+        };
+
         private static readonly string[] ProfanityWords = { "fuck", "shit", "bitch", "asshole", "bastard" };
 
-        public Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
+        private record YtCommentThreadsResponse(List<YtCommentItem>? items, string? nextPageToken, PageInfo? pageInfo);
+        private record YtCommentItem(YtCommentSnippetWrap? snippet);
+        private record YtCommentSnippetWrap(YtTopLevelComment? topLevelComment);
+        private record YtTopLevelComment(YtTopLevelCommentSnippet? snippet);
+        private record YtTopLevelCommentSnippet(string? authorDisplayName, string? textOriginal, long? likeCount, DateTime? publishedAt);
+        private record PageInfo(int? totalResults, int? resultsPerPage);
+
+        public YouTubeVideoAnalysisService(
+            IHttpClientFactory http,
+            IConfiguration config,
+            ILogger<YouTubeVideoAnalysisService> logger)
+        {
+            _http = http;
+            _logger = logger;
+            _apiKey =
+                config["YouTube:ApiKey"]
+                ?? config["YouTube__ApiKey"]
+                ?? config["YOUTUBE_API_KEY"];
+        }
+
+        public async Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
         {
             var today = request.TodayUtc ?? DateTime.UtcNow;
             var video = request.Video ?? new YouTubeVideoDto();
             var stats = video.Statistics ?? new YouTubeVideoStatisticsDto();
+
+            var inputComments = request.Comments ?? new List<YouTubeCommentDto>();
+            var comments = inputComments;
+
+            var maxFetch = Math.Clamp(request.MaxCommentsToFetch <= 0 ? 500 : request.MaxCommentsToFetch, 50, 2000);
+            var commentFetchMeta = new
+            {
+                mode = "provided",
+                requested_max = maxFetch,
+                provided_count = inputComments.Count,
+                fetched_count = 0,
+                total_comment_count = stats.CommentCount,
+                fetched_all = inputComments.Count > 0 && stats.CommentCount.HasValue && inputComments.Count >= stats.CommentCount.Value,
+                capped = false,
+                note = inputComments.Count > 0
+                    ? "Using comments provided in request payload."
+                    : "No comments provided; comment-level NLP is limited until comments are fetched or passed in payload."
+            };
+
+            if ((comments == null || comments.Count == 0)
+                && request.AutoFetchComments
+                && !string.IsNullOrWhiteSpace(video.VideoId)
+                && IsApiKeyConfigured())
+            {
+                var fetched = await FetchCommentsForVideoAsync(video.VideoId!, maxFetch);
+                comments = fetched.Comments;
+                commentFetchMeta = new
+                {
+                    mode = "youtube_comment_threads_api",
+                    requested_max = maxFetch,
+                    provided_count = inputComments.Count,
+                    fetched_count = fetched.Comments.Count,
+                    total_comment_count = fetched.TotalResults ?? stats.CommentCount,
+                    fetched_all = fetched.FetchedAll,
+                    capped = fetched.Capped,
+                    note = fetched.Note
+                };
+            }
 
             var title = video.Title ?? string.Empty;
             var description = video.Description ?? string.Empty;
             var tags = video.Tags ?? new List<string>();
             var allEvidenceText = string.Join("\n", new[] { title, description, string.Join(" ", tags) }.Where(x => !string.IsNullOrWhiteSpace(x))).ToLowerInvariant();
 
-            var collaboration = DetectCollaboration(allEvidenceText, description, tags, request.Comments);
+            var normalizedComments = comments ?? new List<YouTubeCommentDto>();
+
+            var collaboration = DetectCollaboration(allEvidenceText, description, tags, normalizedComments);
             var growth = BuildGrowth(stats, request.TimeSeries);
-            var comments = BuildCommentIntelligence(request.Comments);
-            var brandReadout = BuildBrandReadout(video, collaboration, comments);
+            var commentIntelligence = BuildCommentIntelligence(normalizedComments, stats.CommentCount, commentFetchMeta);
+            var brandReadout = BuildBrandReadout(video, collaboration, commentIntelligence);
 
             var videoSummary = new
             {
@@ -79,7 +167,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 }
             };
 
-            var missingDataChecklist = BuildMissingChecklist(video, request.ChannelContext, request.Comments, request.TimeSeries);
+            var missingDataChecklist = BuildMissingChecklist(video, request.ChannelContext, normalizedComments, request.TimeSeries);
 
             var uiIdeas = new[]
             {
@@ -98,14 +186,14 @@ namespace InfluencerMatch.Infrastructure.Services
                 video_summary = videoSummary,
                 collaboration_detection = collaboration,
                 growth_analysis = growth,
-                comment_intelligence = comments,
+                comment_intelligence = commentIntelligence,
                 brand_agency_readout = brandReadout,
                 recommendations = recommendations,
                 missing_data_checklist = missingDataChecklist,
                 ui_widget_ideas = uiIdeas
             };
 
-            return Task.FromResult(output);
+            return output;
         }
 
         private static string BuildSummary(string title, string description)
@@ -248,7 +336,7 @@ namespace InfluencerMatch.Infrastructure.Services
             };
         }
 
-        private static object BuildCommentIntelligence(List<YouTubeCommentDto> comments)
+        private static object BuildCommentIntelligence(List<YouTubeCommentDto> comments, long? totalCommentCount, object fetchMeta)
         {
             var texts = comments.Select(c => c.TextOriginal ?? string.Empty).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
             if (texts.Count == 0)
@@ -257,9 +345,16 @@ namespace InfluencerMatch.Infrastructure.Services
                 {
                     overall_sentiment = "Unclear due to limited sample",
                     sentiment_breakdown = new { positive_pct = 0, mixed_pct = 0, negative_pct = 0 },
+                    emotion_breakdown = new { joy_pct = 0, anger_pct = 0, sadness_pct = 0, fear_pct = 0, surprise_pct = 0, neutral_pct = 100 },
                     top_5_themes = new List<string>(),
                     improvement_suggestions = new[] { "Collect at least 30 meaningful comments for reliable voice-of-viewer analysis." },
                     audience_questions = new List<string>(),
+                    sample_coverage = new
+                    {
+                        sample_size = 0,
+                        total_comment_count = totalCommentCount,
+                        fetch = fetchMeta
+                    },
                     brand_safety = new
                     {
                         profanity = "Unclear due to limited sample",
@@ -270,11 +365,26 @@ namespace InfluencerMatch.Infrastructure.Services
                 };
             }
 
-            int pos = 0, neg = 0;
+            int pos = 0, neg = 0, neutral = 0;
+            var emotionCounts = new Dictionary<string, int>
+            {
+                ["joy"] = 0,
+                ["anger"] = 0,
+                ["sadness"] = 0,
+                ["fear"] = 0,
+                ["surprise"] = 0,
+                ["neutral"] = 0,
+            };
+
             foreach (var t in texts.Select(x => x.ToLowerInvariant()))
             {
-                if (PositiveWords.Any(t.Contains)) pos++;
-                if (NegativeWords.Any(t.Contains)) neg++;
+                var score = ScoreTextSentiment(t);
+                if (score > 0.35) pos++;
+                else if (score < -0.35) neg++;
+                else neutral++;
+
+                var dominantEmotion = DetectDominantEmotion(t);
+                emotionCounts[dominantEmotion] += 1;
             }
 
             var total = Math.Max(1, texts.Count);
@@ -292,6 +402,15 @@ namespace InfluencerMatch.Infrastructure.Services
             {
                 overall_sentiment = sentiment,
                 sentiment_breakdown = new { positive_pct = posPct, mixed_pct = mixedPct, negative_pct = negPct },
+                emotion_breakdown = new
+                {
+                    joy_pct = (int)Math.Round(emotionCounts["joy"] * 100.0 / total),
+                    anger_pct = (int)Math.Round(emotionCounts["anger"] * 100.0 / total),
+                    sadness_pct = (int)Math.Round(emotionCounts["sadness"] * 100.0 / total),
+                    fear_pct = (int)Math.Round(emotionCounts["fear"] * 100.0 / total),
+                    surprise_pct = (int)Math.Round(emotionCounts["surprise"] * 100.0 / total),
+                    neutral_pct = (int)Math.Round(emotionCounts["neutral"] * 100.0 / total),
+                },
                 top_5_themes = themes,
                 improvement_suggestions = new[]
                 {
@@ -302,6 +421,12 @@ namespace InfluencerMatch.Infrastructure.Services
                     "Encourage specific feedback CTA in end-screen/comment pin."
                 },
                 audience_questions = questions,
+                sample_coverage = new
+                {
+                    sample_size = texts.Count,
+                    total_comment_count = totalCommentCount,
+                    fetch = fetchMeta,
+                },
                 brand_safety = new
                 {
                     profanity = profanityDetected ? "Detected" : "Not detected",
@@ -310,6 +435,116 @@ namespace InfluencerMatch.Infrastructure.Services
                     harassment = "Unclear due to limited sample"
                 }
             };
+        }
+
+        private static double ScoreTextSentiment(string text)
+        {
+            var score = 0.0;
+
+            foreach (var kv in PositiveWords)
+            {
+                if (text.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+                    score += kv.Value;
+            }
+
+            foreach (var kv in NegativeWords)
+            {
+                if (text.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+                    score -= kv.Value;
+            }
+
+            if (text.Contains("!")) score += 0.1;
+            if (text.Contains("??")) score -= 0.2;
+
+            return score;
+        }
+
+        private static string DetectDominantEmotion(string text)
+        {
+            var counts = EmotionLexicon.ToDictionary(k => k.Key, _ => 0);
+            foreach (var kv in EmotionLexicon)
+            {
+                foreach (var token in kv.Value)
+                {
+                    if (text.Contains(token, StringComparison.OrdinalIgnoreCase))
+                        counts[kv.Key] += 1;
+                }
+            }
+
+            var top = counts.OrderByDescending(x => x.Value).First();
+            return top.Value == 0 ? "neutral" : top.Key;
+        }
+
+        private async Task<(List<YouTubeCommentDto> Comments, bool FetchedAll, bool Capped, int? TotalResults, string Note)> FetchCommentsForVideoAsync(string videoId, int maxComments)
+        {
+            try
+            {
+                var http = _http.CreateClient();
+                var comments = new List<YouTubeCommentDto>();
+                string? pageToken = null;
+                int? totalResults = null;
+
+                do
+                {
+                    var tokenPart = string.IsNullOrWhiteSpace(pageToken) ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}";
+                    var url = "https://www.googleapis.com/youtube/v3/commentThreads"
+                        + "?part=snippet"
+                        + "&textFormat=plainText"
+                        + "&maxResults=100"
+                        + "&order=time"
+                        + $"&videoId={Uri.EscapeDataString(videoId)}"
+                        + tokenPart
+                        + $"&key={Uri.EscapeDataString(_apiKey!)}";
+
+                    var resp = await http.GetFromJsonAsync<YtCommentThreadsResponse>(url);
+                    if (resp == null) break;
+
+                    if (resp.pageInfo?.totalResults != null)
+                        totalResults = resp.pageInfo.totalResults;
+
+                    foreach (var item in resp.items ?? new List<YtCommentItem>())
+                    {
+                        var s = item?.snippet?.topLevelComment?.snippet;
+                        if (s == null || string.IsNullOrWhiteSpace(s.textOriginal)) continue;
+
+                        comments.Add(new YouTubeCommentDto
+                        {
+                            AuthorDisplayName = s.authorDisplayName,
+                            LikeCount = s.likeCount,
+                            PublishedAt = s.publishedAt,
+                            TextOriginal = s.textOriginal,
+                        });
+
+                        if (comments.Count >= maxComments) break;
+                    }
+
+                    if (comments.Count >= maxComments) break;
+                    pageToken = resp.nextPageToken;
+                }
+                while (!string.IsNullOrWhiteSpace(pageToken));
+
+                var capped = comments.Count >= maxComments;
+                var fetchedAll = !capped && string.IsNullOrWhiteSpace(pageToken);
+                var note = capped
+                    ? $"Fetched {comments.Count} comments and stopped at cap {maxComments}."
+                    : $"Fetched {comments.Count} comments from YouTube CommentThreads API.";
+
+                return (comments, fetchedAll, capped, totalResults, note);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch comments for video {VideoId}", videoId);
+                return (new List<YouTubeCommentDto>(), false, false, null, "Comment fetch failed; analysis used provided comments only.");
+            }
+        }
+
+        private bool IsApiKeyConfigured()
+        {
+            if (string.IsNullOrWhiteSpace(_apiKey)) return false;
+            if (_apiKey.Contains("YOUR_YOUTUBE", StringComparison.OrdinalIgnoreCase)) return false;
+            if (_apiKey.Contains("YOUR", StringComparison.OrdinalIgnoreCase)) return false;
+            if (_apiKey.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
         }
 
         private static object BuildBrandReadout(YouTubeVideoDto video, object collaboration, object comments)

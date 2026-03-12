@@ -10,12 +10,15 @@ namespace InfluencerMatch.Application.DTOs
         public YouTubeVideoDto? Video { get; set; }
         public YouTubeChannelContextDto? ChannelContext { get; set; }
         public List<YouTubeCommentDto> Comments { get; set; } = new();
+        public bool AutoFetchComments { get; set; } = true;
+        public int MaxCommentsToFetch { get; set; } = 500;
         public List<YouTubeTimeSeriesPointDto> TimeSeries { get; set; } = new();
         public DateTime? TodayUtc { get; set; }
     }
 
     public class YouTubeVideoDto
     {
+        public string? VideoId { get; set; }
         public string? Title { get; set; }
         public string? Description { get; set; }
         public List<string>? Tags { get; set; }

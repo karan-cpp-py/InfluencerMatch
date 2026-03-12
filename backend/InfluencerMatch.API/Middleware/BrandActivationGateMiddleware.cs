@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using InfluencerMatch.API.Configuration;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace InfluencerMatch.API.Middleware
@@ -11,15 +12,23 @@ namespace InfluencerMatch.API.Middleware
     {
         private readonly RequestDelegate _next;
         private readonly PlatformStrategyOptions _options;
+        private readonly IHostEnvironment _env;
 
-        public BrandActivationGateMiddleware(RequestDelegate next, IOptions<PlatformStrategyOptions> options)
+        public BrandActivationGateMiddleware(RequestDelegate next, IOptions<PlatformStrategyOptions> options, IHostEnvironment env)
         {
             _next = next;
             _options = options.Value;
+            _env = env;
         }
 
         public async Task InvokeAsync(HttpContext context)
         {
+            if (_env.IsDevelopment())
+            {
+                await _next(context);
+                return;
+            }
+
             if (_options.BrandActivationEnabled)
             {
                 await _next(context);

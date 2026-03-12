@@ -4,18 +4,19 @@ import api from './api';
 export const platformConfig = reactive({
   loaded: false,
   positioningLine: 'AI Creator Intelligence Platform for growth and sponsorship readiness.',
-  phase: 'Creator Intelligence',
+  phase: 'Brand Activation',
   features: {
-    enableMarketplace: false,
-    enableBrandActivation: false,
+    // Testing default: keep all major product surfaces accessible.
+    enableMarketplace: true,
+    enableBrandActivation: true,
     enableCreatorGraph: true,
   },
   phases: {
     creatorIntelligence: true,
     creatorGraph: true,
     creatorGraphPublicOptIn: true,
-    brandActivation: false,
-    brandPilotInviteOnly: true,
+    brandActivation: true,
+    brandPilotInviteOnly: false,
   },
   kpiGates: {
     activeCreatorsWeekly: 0,
@@ -34,18 +35,17 @@ export async function loadPlatformConfig() {
       ...(data.phases || {})
     };
 
+    // Testing default: do not hide or gate menus/routes by platform switches.
     platformConfig.features = {
-      enableMarketplace: Boolean(data.phases?.creatorGraph),
-      enableBrandActivation: Boolean(data.phases?.brandActivation),
-      enableCreatorGraph: Boolean(data.phases?.creatorGraph),
+      enableMarketplace: true,
+      enableBrandActivation: true,
+      enableCreatorGraph: Boolean(data.phases?.creatorGraph ?? true),
     };
 
-    if (platformConfig.phases.brandActivation) {
-      platformConfig.phase = 'Brand Activation';
-    } else if (platformConfig.phases.creatorGraph) {
+    if (platformConfig.phases.creatorGraph) {
       platformConfig.phase = 'Creator Graph';
     } else {
-      platformConfig.phase = 'Creator Intelligence';
+      platformConfig.phase = 'Brand Activation';
     }
 
     platformConfig.kpiGates = {

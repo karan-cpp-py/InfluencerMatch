@@ -20,6 +20,13 @@ namespace InfluencerMatch.API.Middleware
 
         public async Task InvokeAsync(HttpContext context, ISubscriptionAccessService accessService)
         {
+            // Testing/development mode: do not block feature usage behind subscription gates.
+            if (_env.IsDevelopment())
+            {
+                await _next(context);
+                return;
+            }
+
             var pathRule = ResolvePathRule(context.Request.Path);
             if (pathRule == null)
             {
@@ -44,12 +51,6 @@ namespace InfluencerMatch.API.Middleware
 
             if (pathRule == "creator_search")
             {
-                if (_env.IsDevelopment())
-                {
-                    await _next(context);
-                    return;
-                }
-
                 var access = await accessService.ValidateCreatorSearchAccessAsync(userId);
                 if (!access.Allowed)
                 {

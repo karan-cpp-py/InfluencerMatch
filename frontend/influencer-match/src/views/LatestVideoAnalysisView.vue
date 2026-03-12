@@ -215,7 +215,10 @@ async function loadTemplate() {
       creatorName: creator?.channelName || null,
       channelId: creator?.channelId || null,
       todayUtc: new Date().toISOString(),
+      autoFetchComments: true,
+      maxCommentsToFetch: 500,
       video: {
+        videoId: null,
         title: '',
         description: '',
         tags: [],
@@ -260,7 +263,10 @@ function buildPayloadFromContext(creatorData, latestVideoRow) {
     creatorName: creatorData?.channelName || null,
     channelId: creatorData?.channelId || null,
     todayUtc: new Date().toISOString(),
+    autoFetchComments: true,
+    maxCommentsToFetch: 500,
     video: {
+      videoId: latestVideoRow?.youtubeVideoId || null,
       title,
       description,
       tags: hasBrand ? [String(latestVideoRow.brandName)] : [],

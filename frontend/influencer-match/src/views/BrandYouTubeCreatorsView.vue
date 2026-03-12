@@ -256,7 +256,12 @@
             <div v-if="!detail.creator.publicEmail && !detail.creator.instagramHandle && !detail.creator.twitterHandle" class="text-muted small">No contact info found in channel description.</div>
             <div v-if="detail.creator.publicEmail" class="mb-1">
               <span class="badge bg-primary-subtle text-primary me-2">Email</span>
-              <a :href="'mailto:' + detail.creator.publicEmail">{{ detail.creator.publicEmail }}</a>
+              <a :href="`mailto:${detail.creator.publicEmail}`">{{ detail.creator.publicEmail }}</a>
+              <div v-if="canDirectEmail" class="mt-2 d-flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-outline-primary" @click="openInGmail(detail.creator.publicEmail)">Open in Gmail</button>
+                <button class="btn btn-sm btn-outline-secondary" @click="copyEmail(detail.creator.publicEmail)">Copy</button>
+              </div>
+              <div v-if="emailActionMessage" class="small text-muted mt-1">{{ emailActionMessage }}</div>
             </div>
             <div v-if="detail.creator.instagramHandle" class="mb-1">
               <span class="badge bg-danger-subtle text-danger me-2">Instagram</span>
@@ -372,6 +377,9 @@ const fit             = ref(null);
 const readiness       = ref(null);
 const opportunityRadar = ref(null);
 const regionalLanguage = ref(null);
+const emailActionMessage = ref('');
+
+const canDirectEmail = ['Brand', 'Agency'].includes(localStorage.getItem('role') || '');
 
 const filters = ref({
   search: '',
@@ -420,6 +428,7 @@ async function openDetail(creator) {
   insights.value        = null;
   fit.value             = null;
   readiness.value       = null;
+  emailActionMessage.value = '';
   detailLoading.value   = true;
   try {
     const [detailRes, insightsRes, fitRes, readinessRes] = await Promise.allSettled([
@@ -457,6 +466,24 @@ async function openDetail(creator) {
     console.error(e);
   } finally {
     detailLoading.value = false;
+  }
+}
+
+function openInGmail(email) {
+  const to = encodeURIComponent(String(email || '').trim());
+  if (!to) return;
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}`;
+  window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+}
+
+async function copyEmail(email) {
+  const value = String(email || '').trim();
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    emailActionMessage.value = 'Email copied.';
+  } catch {
+    emailActionMessage.value = 'Unable to copy automatically. Please copy manually.';
   }
 }
 
