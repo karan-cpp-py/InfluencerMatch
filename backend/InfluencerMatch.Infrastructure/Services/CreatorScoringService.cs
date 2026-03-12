@@ -271,7 +271,7 @@ namespace InfluencerMatch.Infrastructure.Services
             int page, int pageSize, string? category = null, string? country = null)
         {
             // ── 1. Load creators (with optional category + country filters) ──
-            var creatorsQuery = _db.Creators.AsNoTracking().Where(c => c.UserId != null).AsQueryable();
+            var creatorsQuery = _db.Creators.AsNoTracking().Where(c => c.ChannelId != null && c.ChannelId != "").AsQueryable();
             if (!string.IsNullOrWhiteSpace(category))
                 creatorsQuery = creatorsQuery.Where(c => c.Category == category);
             // country filter: only apply when Country data has been populated

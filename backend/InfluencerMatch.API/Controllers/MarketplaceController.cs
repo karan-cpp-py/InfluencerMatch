@@ -26,6 +26,7 @@ namespace InfluencerMatch.API.Controllers
     [Route("api/marketplace")]
     public class MarketplaceController : ControllerBase
     {
+        private const int ImportedCreatorProfileOffset = 1_000_000_000;
         private static readonly string[] IndiaCountryAliases = { "in", "india", "bharat", "ind" };
         private static readonly string[] DefaultDiscoveryLanguages = { "hindi", "english" };
         private static readonly Dictionary<string, string[]> IndiaStateAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -120,11 +121,19 @@ namespace InfluencerMatch.API.Controllers
             // ── 1. New Creator system: CreatorChannels JOIN CreatorProfiles ──
             var creatorItems = await BuildCreatorQuery(query);
 
-            // ── 2. Legacy Influencer system ──────────────────────────────────
+            // ── 2. Imported/legacy Creator rows (registered + imported) ─────
+            var importedCreatorItems = await BuildImportedCreatorQuery(query, ct);
+
+            // ── 3. Legacy Influencer system ──────────────────────────────────
             var influencerItems = await BuildInfluencerQuery(query, ct);
 
             // ── Merge, sort, paginate ─────────────────────────────────────────
-            var all = creatorItems.Concat(influencerItems).ToList();
+            var all = creatorItems
+                .Concat(importedCreatorItems)
+                .Concat(influencerItems)
+                .GroupBy(x => x.ChannelId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
 
             all = (query.SortBy ?? "subscribers").ToLowerInvariant() switch
             {
@@ -152,6 +161,10 @@ namespace InfluencerMatch.API.Controllers
             int creatorProfileId,
             CancellationToken ct)
         {
+            // Large positive ID = imported/legacy Creator row encoded as offset + CreatorId
+            if (creatorProfileId >= ImportedCreatorProfileOffset)
+                return await GetImportedCreatorDetail(creatorProfileId - ImportedCreatorProfileOffset, ct);
+
             // Negative ID = legacy Influencer record
             if (creatorProfileId < 0)
                 return await GetLegacyInfluencerDetail(-creatorProfileId, ct);
@@ -273,6 +286,93 @@ namespace InfluencerMatch.API.Controllers
                 IsVerified       = x.ch.IsVerified,
                 ContactEmail     = x.pr.ContactEmail
             }).ToList();
+
+            if (query.MinEngagement.HasValue)
+                items = items.Where(x => x.EngagementRate >= query.MinEngagement.Value).ToList();
+
+            return items;
+        }
+
+        private async Task<List<MarketplaceCreatorDto>> BuildImportedCreatorQuery(
+            MarketplaceSearchQueryDto query,
+            CancellationToken ct = default)
+        {
+            var q = _db.Creators
+                .AsNoTracking()
+                .Where(c => c.ChannelId != null && c.ChannelId != "")
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(query.Search))
+            {
+                var needle = query.Search.Trim().ToLower();
+                q = q.Where(c => c.ChannelName != null && c.ChannelName.ToLower().Contains(needle));
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.Category))
+                q = q.Where(c => c.Category == query.Category);
+
+            if (!string.IsNullOrWhiteSpace(query.CreatorTier))
+                q = q.Where(c => c.CreatorTier == query.CreatorTier);
+
+            if (query.MinSubscribers.HasValue)
+                q = q.Where(c => c.Subscribers >= query.MinSubscribers.Value);
+
+            if (query.MaxSubscribers.HasValue)
+                q = q.Where(c => c.Subscribers <= query.MaxSubscribers.Value);
+
+            // Product scope: India-only discovery.
+            q = q.Where(c => c.Country != null && IndiaCountryAliases.Contains(c.Country.ToLower()));
+
+            var records = await q.ToListAsync(ct);
+
+            var selectedRegion = NormalizeRegionKey(query.Region);
+            var selectedLanguage = string.IsNullOrWhiteSpace(query.Language)
+                ? null
+                : query.Language.Trim().ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                records = records.Where(c => MatchesRegion(
+                    c.Region,
+                    c.Country,
+                    c.Language,
+                    c.ChannelName,
+                    c.Description,
+                    selectedRegion!)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedLanguage))
+            {
+                records = records.Where(c => string.Equals(c.Language, selectedLanguage, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else if (string.IsNullOrWhiteSpace(selectedRegion))
+            {
+                records = records.Where(c => c.Language != null && DefaultDiscoveryLanguages.Contains(c.Language.ToLowerInvariant())).ToList();
+            }
+
+            var items = records
+                .Select(c => new MarketplaceCreatorDto
+                {
+                    CreatorProfileId = ImportedCreatorProfileOffset + c.CreatorId,
+                    ChannelId = c.ChannelId,
+                    ChannelName = c.ChannelName,
+                    ThumbnailUrl = c.ThumbnailUrl,
+                    Subscribers = c.Subscribers,
+                    TotalViews = c.TotalViews,
+                    EngagementRate = EngagementRateEstimator.EstimateOrStored(
+                        c.EngagementRate,
+                        c.Subscribers,
+                        c.TotalViews,
+                        c.VideoCount,
+                        c.AvgViews),
+                    CreatorTier = c.CreatorTier,
+                    Language = c.Language,
+                    Category = c.Category,
+                    Country = c.Country,
+                    IsVerified = c.UserId != null,
+                    ContactEmail = c.PublicEmail
+                })
+                .ToList();
 
             if (query.MinEngagement.HasValue)
                 items = items.Where(x => x.EngagementRate >= query.MinEngagement.Value).ToList();
@@ -407,6 +507,62 @@ namespace InfluencerMatch.API.Controllers
                 InstagramHandle  = row.i.InstagramLink,
                 Bio              = null,
                 RecentVideos     = recentVideos
+            });
+        }
+
+        private async Task<IActionResult> GetImportedCreatorDetail(
+            int creatorId,
+            CancellationToken ct)
+        {
+            var creator = await _db.Creators
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.CreatorId == creatorId && c.ChannelId != null && c.ChannelId != "", ct);
+
+            if (creator == null)
+                return NotFound(new { error = "Creator not found in marketplace." });
+
+            var recentVideos = await _db.VideoAnalytics
+                .AsNoTracking()
+                .Where(v => v.CreatorId == creator.CreatorId)
+                .OrderByDescending(v => v.PublishedAt)
+                .Take(10)
+                .Select(v => new ChannelVideoDto
+                {
+                    YoutubeVideoId = v.YoutubeVideoId,
+                    ChannelId = creator.ChannelId,
+                    Title = v.Title,
+                    ViewCount = v.Views,
+                    LikeCount = v.Likes,
+                    CommentCount = v.Comments,
+                    PublishedAt = v.PublishedAt
+                })
+                .ToListAsync(ct);
+
+            return Ok(new MarketplaceCreatorDetailDto
+            {
+                CreatorProfileId = ImportedCreatorProfileOffset + creator.CreatorId,
+                CreatorId = creator.CreatorId,
+                ChannelId = creator.ChannelId,
+                ChannelName = creator.ChannelName,
+                ThumbnailUrl = creator.ThumbnailUrl,
+                Subscribers = creator.Subscribers,
+                TotalViews = creator.TotalViews,
+                EngagementRate = EngagementRateEstimator.EstimateOrStored(
+                    creator.EngagementRate,
+                    creator.Subscribers,
+                    creator.TotalViews,
+                    creator.VideoCount,
+                    creator.AvgViews),
+                CreatorTier = creator.CreatorTier,
+                Language = creator.Language,
+                Category = creator.Category,
+                Country = creator.Country,
+                IsVerified = creator.UserId != null,
+                ContactEmail = creator.PublicEmail,
+                Description = creator.Description,
+                InstagramHandle = creator.InstagramHandle,
+                Bio = null,
+                RecentVideos = recentVideos
             });
         }
 

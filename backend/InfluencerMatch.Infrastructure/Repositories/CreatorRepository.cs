@@ -114,8 +114,8 @@ namespace InfluencerMatch.Infrastructure.Repositories
 
         public async Task<PagedResultDto<CreatorSearchResultDto>> SearchAsync(CreatorSearchQueryDto q)
         {
-            // Left join creators (registered only) with their latest analytics
-            var query = from c in _context.Creators.Where(c => c.UserId != null)
+            // Left join all creators with valid channel IDs (registered + imported) with latest analytics.
+            var query = from c in _context.Creators.Where(c => c.ChannelId != null && c.ChannelId != "")
                         join a in _context.CreatorAnalytics on c.CreatorId equals a.CreatorId into aj
                         from a in aj.DefaultIfEmpty()
                         select new { c, a };
