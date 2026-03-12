@@ -75,6 +75,7 @@
           <button class="tab-pill" :class="{ active: tab === 'profile' }" @click="tab = 'profile'">Profile</button>
           <button class="tab-pill" :class="{ active: tab === 'channel' }" @click="tab = 'channel'">Channel</button>
           <button v-if="channel" class="tab-pill" :class="{ active: tab === 'videos' }" @click="tab = 'videos'">Recent Videos</button>
+          <button class="tab-pill" :class="{ active: tab === 'insights' }" @click="tab = 'insights'; loadInsights()">Insights</button>
           <button class="tab-pill position-relative" :class="{ active: tab === 'collabs' }" @click="tab = 'collabs'; loadCollabs()">
             Collaborations
             <span v-if="pendingCollabs > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
@@ -219,6 +220,80 @@
             <div class="card-body p-4">
               <div class="d-flex justify-content-between align-items-start">
                 <div>
+
+                <!-- ── TAB: Insights ──────────────────────────────────────────────── -->
+                <div v-if="tab === 'insights'" class="card border-0 shadow-sm section-card">
+                  <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                      <h5 class="fw-semibold mb-0">Creator Health & Coaching Insights</h5>
+                      <button class="btn btn-sm btn-outline-secondary" @click="loadInsights">Refresh</button>
+                    </div>
+
+                    <div v-if="insightsLoading" class="text-center py-4">
+                      <div class="spinner-border text-primary"></div>
+                    </div>
+
+                    <div v-else-if="insightsError" class="alert alert-warning">{{ insightsError }}</div>
+
+                    <div v-else-if="insights">
+                      <div class="row g-2 mb-3">
+                        <div class="col-6 col-md-3">
+                          <article class="metric-card"><p class="metric-label">Health Score</p><p class="metric-value">{{ Number(insights.healthScorecard.compositeScore || 0).toFixed(1) }}</p></article>
+                        </div>
+                        <div class="col-6 col-md-3">
+                          <article class="metric-card"><p class="metric-label">7d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend7d || 'flat' }}</p></article>
+                        </div>
+                        <div class="col-6 col-md-3">
+                          <article class="metric-card"><p class="metric-label">30d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend30d || 'flat' }}</p></article>
+                        </div>
+                        <div class="col-6 col-md-3">
+                          <article class="metric-card"><p class="metric-label">Brand Safety</p><p class="metric-value">{{ Number(insights.healthScorecard.brandSafetyScore || 0).toFixed(1) }}</p></article>
+                        </div>
+                      </div>
+
+                      <div class="alert alert-info py-2 small mb-3">{{ insights.healthScorecard.whyExplanation }}</div>
+
+                      <h6 class="fw-semibold">Audience Quality & Authenticity</h6>
+                      <div class="row g-2 mb-3">
+                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Suspicious Ratio</div><div class="stat-val">{{ (Number(insights.audienceQuality.suspiciousEngagementRatio || 0) * 100).toFixed(1) }}%</div></div></div>
+                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">LCV Consistency</div><div class="stat-val">{{ Number(insights.audienceQuality.likeCommentViewConsistencyScore || 0).toFixed(1) }}</div></div></div>
+                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Volatility</div><div class="stat-val">{{ Number(insights.audienceQuality.engagementVolatilityScore || 0).toFixed(1) }}</div></div></div>
+                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Reused Pattern</div><div class="stat-val">{{ Number(insights.audienceQuality.reusedCommentPatternScore || 0).toFixed(1) }}</div></div></div>
+                      </div>
+
+                      <div class="small text-muted mb-3">{{ insights.audienceQuality.explanation }}</div>
+
+                      <h6 class="fw-semibold">Best Posting Window</h6>
+                      <p class="mb-2">{{ insights.coaching.bestPostingWindow || 'Not enough data yet' }}</p>
+
+                      <h6 class="fw-semibold">Content Format Performance</h6>
+                      <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Format</th>
+                              <th class="text-end">Avg Views</th>
+                              <th class="text-end">Avg Engagement</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="f in insights.coaching.contentFormatPerformance || []" :key="f.format">
+                              <td>{{ f.format }}</td>
+                              <td class="text-end">{{ fmtNum(f.avgViews) }}</td>
+                              <td class="text-end">{{ (Number(f.avgEngagementRate || 0) * 100).toFixed(2) }}%</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <h6 class="fw-semibold">Weekly Action List</h6>
+                      <ul class="mb-0">
+                        <li v-for="a in insights.coaching.weeklyActionList || []" :key="a" class="mb-1">{{ a }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
                   <h6 class="fw-bold mb-1">{{ c.campaignTitle }}</h6>
                   <p class="text-muted small mb-1">From: <strong>{{ c.brandName }}</strong></p>
                   <p class="text-muted small mb-1">Budget: <strong>${{ c.budget?.toLocaleString() }}</strong></p>
@@ -314,6 +389,9 @@ const collabs = ref([]);
 const loadingCollabs = ref(false);
 const loadingWorkflow = ref(false);
 const selectedWorkflow = ref(null);
+const insights = ref(null);
+const insightsLoading = ref(false);
+const insightsError = ref('');
 
 const languages = ['Hindi', 'English', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Punjabi', 'Bengali', 'Marathi', 'Haryanvi'];
 
@@ -449,6 +527,19 @@ async function loadCollabs() {
     console.error('Load collabs failed', e);
   } finally {
     loadingCollabs.value = false;
+  }
+}
+
+async function loadInsights() {
+  insightsLoading.value = true;
+  insightsError.value = '';
+  try {
+    const res = await api.get('/creator/insights');
+    insights.value = res.data;
+  } catch (e) {
+    insightsError.value = e?.userMessage || e?.response?.data?.error || 'Unable to load insights.';
+  } finally {
+    insightsLoading.value = false;
   }
 }
 

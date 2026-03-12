@@ -66,16 +66,98 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="c in filteredCampaigns" :key="c.campaignId">
-                  <td>#{{ c.campaignId }}</td>
-                  <td class="fw-semibold">${{ Number(c.budget || 0).toLocaleString() }}</td>
-                  <td>{{ c.category || '-' }}</td>
-                  <td>{{ c.targetLocation || '-' }}</td>
-                  <td class="text-end">
-                    <button class="btn btn-sm btn-primary me-2" @click="viewResults(c.campaignId)">Results</button>
-                    <button class="btn btn-sm btn-outline-secondary" @click="editCampaign(c.campaignId)">Edit</button>
-                  </td>
-                </tr>
+                <template v-for="c in filteredCampaigns" :key="c.campaignId">
+                  <tr>
+                    <td>#{{ c.campaignId }}</td>
+                    <td class="fw-semibold">${{ Number(c.budget || 0).toLocaleString() }}</td>
+                    <td>{{ c.category || '-' }}</td>
+                    <td>{{ c.targetLocation || '-' }}</td>
+                    <td class="text-end">
+                      <button class="btn btn-sm btn-primary me-2" @click="viewResults(c.campaignId)">Results</button>
+                      <button class="btn btn-sm btn-outline-info me-2" @click="toggleAnalytics(c)">
+                        {{ expandedCampaignId === c.campaignId ? 'Hide Insights' : 'Insights' }}
+                      </button>
+                      <button class="btn btn-sm btn-outline-secondary" @click="editCampaign(c.campaignId)">Edit</button>
+                    </td>
+                  </tr>
+
+                  <tr v-if="expandedCampaignId === c.campaignId">
+                    <td colspan="5" class="bg-light">
+                      <div v-if="analyticsLoading" class="text-center py-3">
+                        <span class="spinner-border spinner-border-sm text-primary me-2"></span>Loading campaign insights...
+                      </div>
+
+                      <div v-else-if="analyticsError" class="alert alert-warning py-2 mb-2">{{ analyticsError }}</div>
+
+                      <div v-else-if="campaignAnalytics[c.campaignId]" class="p-2">
+                        <div class="row g-2 mb-2">
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">Reach</div><div class="summary-value small-value">{{ fmtCompact(campaignAnalytics[c.campaignId].reach) }}</div></div></div>
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">Engaged Views</div><div class="summary-value small-value">{{ fmtCompact(campaignAnalytics[c.campaignId].engagedViews) }}</div></div></div>
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">Engagement</div><div class="summary-value small-value">{{ pct(campaignAnalytics[c.campaignId].engagementRate) }}</div></div></div>
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">CPM</div><div class="summary-value small-value">${{ money(campaignAnalytics[c.campaignId].cpm) }}</div></div></div>
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">CPE</div><div class="summary-value small-value">${{ money(campaignAnalytics[c.campaignId].cpe) }}</div></div></div>
+                          <div class="col-6 col-md-2"><div class="summary-card p-2"><div class="summary-label">CPC Proxy</div><div class="summary-value small-value">${{ money(campaignAnalytics[c.campaignId].cpcLikeProxy) }}</div></div></div>
+                        </div>
+
+                        <div v-if="campaignForecasts[c.campaignId]" class="mb-2">
+                          <h6 class="fw-semibold mb-1">Pre-Campaign Forecast <span class="badge bg-secondary ms-1">{{ campaignForecasts[c.campaignId].confidenceTier }}</span></h6>
+                          <div class="small text-muted mb-2">Confidence: {{ (campaignForecasts[c.campaignId].confidenceScore * 100).toFixed(0) }}%</div>
+                          <div class="table-responsive">
+                            <table class="table table-sm table-bordered mb-0">
+                              <thead class="table-light">
+                                <tr>
+                                  <th>Scenario</th>
+                                  <th class="text-end">Estimated Views</th>
+                                  <th class="text-end">Estimated Engagements</th>
+                                  <th class="text-end">CPM</th>
+                                  <th class="text-end">CPE</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr v-for="s in campaignForecasts[c.campaignId].budgetScenarios" :key="s.name">
+                                  <td class="text-capitalize">{{ s.name }}</td>
+                                  <td class="text-end">{{ fmtCompact(s.estimatedViews) }}</td>
+                                  <td class="text-end">{{ fmtCompact(s.estimatedEngagements) }}</td>
+                                  <td class="text-end">${{ money(s.estimatedCpm) }}</td>
+                                  <td class="text-end">${{ money(s.estimatedCpe) }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <h6 class="fw-semibold mb-1">Creator Contribution Ranking</h6>
+                        <div class="table-responsive">
+                          <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                              <tr>
+                                <th>Creator</th>
+                                <th class="text-end">Reach</th>
+                                <th class="text-end">Engaged Views</th>
+                                <th class="text-end">Contribution</th>
+                                <th class="text-end">Indicator</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-if="!campaignAnalytics[c.campaignId].creatorContributions?.length">
+                                <td colspan="5" class="text-center text-muted">No contribution data available.</td>
+                              </tr>
+                              <tr v-for="r in campaignAnalytics[c.campaignId].creatorContributions || []" :key="r.creatorId">
+                                <td>{{ r.creatorName }}</td>
+                                <td class="text-end">{{ fmtCompact(r.reach) }}</td>
+                                <td class="text-end">{{ fmtCompact(r.engagedViews) }}</td>
+                                <td class="text-end">{{ Number(r.contributionPercent || 0).toFixed(1) }}%</td>
+                                <td class="text-end">
+                                  <span class="badge" :class="performanceBadge(r.performanceTag)">{{ r.performanceTag }}</span>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -95,6 +177,11 @@ const campaigns = ref([]);
 const loading = ref(false);
 const router = useRouter();
 const search = ref('');
+const campaignAnalytics = ref({});
+const campaignForecasts = ref({});
+const expandedCampaignId = ref(null);
+const analyticsLoading = ref(false);
+const analyticsError = ref('');
 
 const filteredCampaigns = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -145,6 +232,58 @@ function viewResults(id) {
 
 function editCampaign(id) {
   router.push({ path: '/brand', query: { campaignId: id } });
+}
+
+async function toggleAnalytics(campaign) {
+  if (expandedCampaignId.value === campaign.campaignId) {
+    expandedCampaignId.value = null;
+    return;
+  }
+
+  expandedCampaignId.value = campaign.campaignId;
+  analyticsError.value = '';
+  analyticsLoading.value = true;
+  try {
+    const [outcomeRes, forecastRes] = await Promise.all([
+      api.get(`/campaign/${campaign.campaignId}/outcomes`),
+      api.post(`/campaign/${campaign.campaignId}/forecast`, { budgetOverride: campaign.budget })
+    ]);
+
+    campaignAnalytics.value = {
+      ...campaignAnalytics.value,
+      [campaign.campaignId]: outcomeRes.data,
+    };
+
+    campaignForecasts.value = {
+      ...campaignForecasts.value,
+      [campaign.campaignId]: forecastRes.data,
+    };
+  } catch (e) {
+    analyticsError.value = e?.userMessage || e?.response?.data?.error || 'Unable to load campaign insights.';
+  } finally {
+    analyticsLoading.value = false;
+  }
+}
+
+function fmtCompact(n) {
+  const v = Number(n || 0);
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
+  if (v >= 1_000) return (v / 1_000).toFixed(1) + 'K';
+  return v.toFixed(0);
+}
+
+function money(n) {
+  return Number(n || 0).toFixed(2);
+}
+
+function pct(ratio) {
+  return `${(Number(ratio || 0) * 100).toFixed(2)}%`;
+}
+
+function performanceBadge(tag) {
+  if (tag === 'Overperformer') return 'bg-success';
+  if (tag === 'Underperformer') return 'bg-danger';
+  return 'bg-secondary';
 }
 </script>
 

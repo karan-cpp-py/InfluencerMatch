@@ -13,10 +13,14 @@ namespace InfluencerMatch.API.Controllers
     public class CampaignController : ControllerBase
     {
         private readonly ICampaignService _service;
+        private readonly IAdvancedAnalyticsService _advancedAnalytics;
 
-        public CampaignController(ICampaignService service)
+        public CampaignController(
+            ICampaignService service,
+            IAdvancedAnalyticsService advancedAnalytics)
         {
             _service = service;
+            _advancedAnalytics = advancedAnalytics;
         }
 
         [HttpPost]
@@ -69,7 +73,40 @@ namespace InfluencerMatch.API.Controllers
             return Ok(list);
         }
 
+        [HttpGet("{id}/outcomes")]
+        public async Task<IActionResult> GetOutcomeAnalytics(int id)
+        {
+            var existing = await _service.GetByIdAsync(id);
+            if (existing == null) return NotFound();
+
+            if (existing.BrandId != GetUserId())
+                return Forbid();
+
+            var result = await _advancedAnalytics.GetCampaignOutcomeAnalyticsAsync(id);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+
+        [HttpPost("{id}/forecast")]
+        public async Task<IActionResult> GetForecast(int id, [FromBody] CampaignForecastRequestDto dto)
+        {
+            var existing = await _service.GetByIdAsync(id);
+            if (existing == null) return NotFound();
+
+            if (existing.BrandId != GetUserId())
+                return Forbid();
+
+            var result = await _advancedAnalytics.GetPreCampaignForecastAsync(id, dto?.BudgetOverride);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+
         private int GetUserId()
             => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    }
+
+    public class CampaignForecastRequestDto
+    {
+        public decimal? BudgetOverride { get; set; }
     }
 }

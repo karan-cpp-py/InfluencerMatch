@@ -53,6 +53,8 @@ namespace InfluencerMatch.Infrastructure.Data
         public DbSet<EnterpriseLeadActivity> EnterpriseLeadActivities { get; set; }
         public DbSet<ReferralCode> ReferralCodes { get; set; }
         public DbSet<ReferralUsage> ReferralUsages { get; set; }
+        public DbSet<CreatorHealthSnapshot> CreatorHealthSnapshots { get; set; }
+        public DbSet<CampaignAnalyticsSnapshot> CampaignAnalyticsSnapshots { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -584,6 +586,28 @@ namespace InfluencerMatch.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(x => x.ReferredUserId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<CreatorHealthSnapshot>()
+                .HasIndex(x => x.CreatorId)
+                .IsUnique();
+            modelBuilder.Entity<CreatorHealthSnapshot>()
+                .HasOne(x => x.Creator)
+                .WithMany()
+                .HasForeignKey(x => x.CreatorId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<CreatorHealthSnapshot>()
+                .HasIndex(x => x.CalculatedAt);
+
+            modelBuilder.Entity<CampaignAnalyticsSnapshot>()
+                .HasIndex(x => x.CampaignId)
+                .IsUnique();
+            modelBuilder.Entity<CampaignAnalyticsSnapshot>()
+                .HasOne(x => x.Campaign)
+                .WithMany()
+                .HasForeignKey(x => x.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<CampaignAnalyticsSnapshot>()
+                .HasIndex(x => x.CalculatedAt);
         }
     }
 }

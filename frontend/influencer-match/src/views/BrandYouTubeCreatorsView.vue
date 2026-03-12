@@ -249,6 +249,34 @@
             </div>
           </div>
 
+          <div class="mt-3" v-if="insights">
+            <h6 class="fw-semibold mb-2">Creator Health Scorecard</h6>
+            <div class="row g-2 mb-2">
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">Composite</div><div class="stat-val">{{ Number(insights.healthScorecard.compositeScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">Safety</div><div class="stat-val">{{ Number(insights.healthScorecard.brandSafetyScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">7d</div><div class="stat-val text-capitalize">{{ insights.healthScorecard.trend?.trend7d || 'flat' }}</div></div></div>
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">30d</div><div class="stat-val text-capitalize">{{ insights.healthScorecard.trend?.trend30d || 'flat' }}</div></div></div>
+            </div>
+            <p class="small text-muted mb-2">{{ insights.healthScorecard.whyExplanation }}</p>
+
+            <h6 class="fw-semibold mb-2">Audience Quality</h6>
+            <div class="row g-2 mb-2">
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">Suspicious Ratio</div><div class="stat-val">{{ (Number(insights.audienceQuality.suspiciousEngagementRatio || 0) * 100).toFixed(1) }}%</div></div></div>
+              <div class="col-6"><div class="stat-box text-center"><div class="stat-label">Volatility</div><div class="stat-val">{{ Number(insights.audienceQuality.engagementVolatilityScore || 0).toFixed(1) }}</div></div></div>
+            </div>
+            <p class="small text-muted mb-0">{{ insights.audienceQuality.explanation }}</p>
+          </div>
+
+          <div class="mt-3" v-if="fit">
+            <h6 class="fw-semibold mb-2">Creator-Brand Fit</h6>
+            <div class="row g-2 mb-2">
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Overall</div><div class="stat-val">{{ Number(fit.overallFitScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Category</div><div class="stat-val">{{ Number(fit.categoryFitScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-4"><div class="stat-box text-center"><div class="stat-label">Geo/Language</div><div class="stat-val">{{ Number(fit.languageGeoFitScore || 0).toFixed(1) }}</div></div></div>
+            </div>
+            <p class="small text-muted mb-0">{{ fit.explanation }}</p>
+          </div>
+
           <div class="mt-3 text-muted small">
             Last refreshed: {{ detail.creator.lastRefreshedAt ? new Date(detail.creator.lastRefreshedAt).toLocaleDateString() : 'Unknown' }}
           </div>
@@ -273,6 +301,8 @@ const categories  = ref([]);
 const selectedCreator = ref(null);
 const detail          = ref(null);
 const detailLoading   = ref(false);
+const insights        = ref(null);
+const fit             = ref(null);
 
 const filters = ref({
   search: '',
@@ -318,10 +348,37 @@ async function fetchCategories() {
 async function openDetail(creator) {
   selectedCreator.value = creator;
   detail.value          = null;
+  insights.value        = null;
+  fit.value             = null;
   detailLoading.value   = true;
   try {
-    const { data } = await api.get(`/discovery/youtube-creators/${creator.creatorId}`);
-    detail.value = data;
+    const [detailRes, insightsRes, fitRes] = await Promise.allSettled([
+      api.get(`/discovery/youtube-creators/${creator.creatorId}`),
+      api.get(`/discovery/youtube-creators/${creator.creatorId}/insights`, {
+        params: {
+          brandCategory: filters.value.category || null,
+          brandCountry: null,
+          brandLanguage: null,
+        }
+      }),
+      api.get(`/discovery/youtube-creators/${creator.creatorId}/fit`, {
+        params: {
+          brandCategory: filters.value.category || null,
+          brandCountry: null,
+          brandLanguage: null,
+        }
+      })
+    ]);
+
+    if (detailRes.status === 'fulfilled') {
+      detail.value = detailRes.value.data;
+    }
+    if (insightsRes.status === 'fulfilled') {
+      insights.value = insightsRes.value.data;
+    }
+    if (fitRes.status === 'fulfilled') {
+      fit.value = fitRes.value.data;
+    }
   } catch (e) {
     console.error(e);
   } finally {

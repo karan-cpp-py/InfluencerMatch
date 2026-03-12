@@ -36,17 +36,20 @@ namespace InfluencerMatch.API.Controllers
         private readonly ICreatorRegistrationService _registration;
         private readonly ICreatorChannelService      _channel;
         private readonly ICollaborationService       _collaboration;
+        private readonly IAdvancedAnalyticsService   _advancedAnalytics;
         private readonly ApplicationDbContext        _db;
 
         public CreatorController(
             ICreatorRegistrationService registration,
             ICreatorChannelService      channel,
             ICollaborationService       collaboration,
+            IAdvancedAnalyticsService   advancedAnalytics,
             ApplicationDbContext        db)
         {
             _registration  = registration;
             _channel       = channel;
             _collaboration = collaboration;
+            _advancedAnalytics = advancedAnalytics;
             _db            = db;
         }
 
@@ -171,6 +174,19 @@ namespace InfluencerMatch.API.Controllers
                 PendingCollaborations = pendingCount,
                 AvgViewsPerVideo      = avgViews
             });
+        }
+
+        /// <summary>
+        /// Advanced creator insights: health scorecard, audience quality, and coaching recommendations.
+        /// </summary>
+        [HttpGet("insights")]
+        [Authorize(Roles = "Creator")]
+        public async Task<IActionResult> GetCreatorInsights(CancellationToken ct)
+        {
+            var insights = await _advancedAnalytics.GetCreatorSelfInsightsAsync(GetUserId(), ct);
+            if (insights == null)
+                return NotFound(new { error = "Creator profile not found." });
+            return Ok(insights);
         }
 
         /// <summary>

@@ -80,6 +80,7 @@ builder.Services.AddScoped<IVideoAnalyticsService,      InfluencerMatch.Infrastr
 builder.Services.AddScoped<IYouTubeVideoAnalysisService, InfluencerMatch.Infrastructure.Services.YouTubeVideoAnalysisService>();
 // YouTube Creator Import — SuperAdmin manual job
 builder.Services.AddScoped<IYouTubeCreatorImportService, InfluencerMatch.Infrastructure.Services.YouTubeCreatorImportService>();
+builder.Services.AddScoped<IAdvancedAnalyticsService,    InfluencerMatch.Infrastructure.Services.AdvancedAnalyticsService>();
 // AddHostedService<CreatorStatsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 // AddHostedService<VideoMetricsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 

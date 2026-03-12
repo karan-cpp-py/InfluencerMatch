@@ -13,15 +13,18 @@ public class DiscoveryController : ControllerBase
 {
     private readonly IYouTubeQuotaTracker  _quota;
     private readonly ApplicationDbContext  _db;
+    private readonly IAdvancedAnalyticsService _advancedAnalytics;
     private readonly IConfiguration        _config;
 
     public DiscoveryController(
         IYouTubeQuotaTracker  quota,
         ApplicationDbContext  db,
+        IAdvancedAnalyticsService advancedAnalytics,
         IConfiguration        config)
     {
         _quota  = quota;
         _db     = db;
+        _advancedAnalytics = advancedAnalytics;
         _config = config;
     }
 
@@ -385,5 +388,46 @@ public class DiscoveryController : ControllerBase
             .OrderBy(c => c)
             .ToListAsync();
         return Ok(cats);
+    }
+
+    /// <summary>
+    /// Advanced creator analytics bundle for brand evaluation:
+    /// health scorecard, audience quality, and creator coaching snapshot.
+    /// </summary>
+    [HttpGet("youtube-creators/{creatorId:int}/insights")]
+    public async Task<IActionResult> GetYouTubeCreatorInsights(
+        int creatorId,
+        [FromQuery] string? brandCategory = null,
+        [FromQuery] string? brandCountry = null,
+        [FromQuery] string? brandLanguage = null)
+    {
+        var insights = await _advancedAnalytics.GetCreatorInsightsAsync(
+            creatorId,
+            brandCategory,
+            brandCountry,
+            brandLanguage);
+
+        if (insights == null) return NotFound();
+        return Ok(insights);
+    }
+
+    /// <summary>
+    /// Creator-brand fit analytics for shortlisting decisions.
+    /// </summary>
+    [HttpGet("youtube-creators/{creatorId:int}/fit")]
+    public async Task<IActionResult> GetYouTubeCreatorFit(
+        int creatorId,
+        [FromQuery] string? brandCategory = null,
+        [FromQuery] string? brandCountry = null,
+        [FromQuery] string? brandLanguage = null)
+    {
+        var fit = await _advancedAnalytics.GetCreatorBrandFitAsync(
+            creatorId,
+            brandCategory,
+            brandCountry,
+            brandLanguage);
+
+        if (fit == null) return NotFound();
+        return Ok(fit);
     }
 }
