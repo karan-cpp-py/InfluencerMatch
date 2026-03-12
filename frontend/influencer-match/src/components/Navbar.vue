@@ -2,8 +2,9 @@
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top nav-modern">
     <div class="container-fluid">
       <router-link class="navbar-brand fw-bold d-flex align-items-center gap-2" to="/">
-        <span class="badge rounded-pill text-bg-light text-dark fw-bold">IM</span>
+        <span class="brand-pill">IM</span>
         <span class="brand-text">InfluencerMatch</span>
+        <span class="brand-beta d-none d-md-inline">LIVE</span>
       </router-link>
       <button
         class="navbar-toggler"
@@ -202,6 +203,46 @@ function logout() {
   gap: 0.45rem;
 }
 
+.brand-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(140deg, #e2f3ff, #ffffff);
+  color: #0f172a;
+  font-size: 0.82rem;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 6px 14px rgba(15, 23, 42, 0.22);
+}
+
+.brand-beta {
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.17);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+}
+
+.dropdown-menu {
+  border-radius: 14px;
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.34);
+}
+
+.dropdown-menu .dropdown-item {
+  border-radius: 10px;
+  margin: 2px 6px;
+  width: calc(100% - 12px);
+}
+
+.dropdown-menu .dropdown-item:hover {
+  background: rgba(56, 189, 248, 0.14);
+}
+
 .nav-modern .navbar-brand {
   min-width: 0;
   max-width: min(52vw, 640px);
@@ -243,6 +284,11 @@ function logout() {
 @media (max-width: 991.98px) {
   .nav-modern .navbar-brand {
     max-width: calc(100% - 62px);
+  }
+
+  .brand-pill {
+    width: 30px;
+    height: 30px;
   }
 }
 </style>
