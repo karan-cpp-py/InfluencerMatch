@@ -94,7 +94,7 @@ namespace InfluencerMatch.Infrastructure.Services
             var resolvedVideoId = video.VideoId;
 
             var maxFetch = Math.Clamp(request.MaxCommentsToFetch <= 0 ? 500 : request.MaxCommentsToFetch, 50, 2000);
-            var commentFetchMeta = new
+            object commentFetchMeta = new
             {
                 mode = "provided",
                 requested_max = maxFetch,
@@ -113,7 +113,8 @@ namespace InfluencerMatch.Infrastructure.Services
                 && IsApiKeyConfigured()
                 && !string.IsNullOrWhiteSpace(request.ChannelId))
             {
-                resolvedVideoId = await ResolveLatestVideoIdByChannelIdAsync(request.ChannelId!);
+                var latestVideoIds = await ResolveLatestVideoIdsByChannelIdAsync(request.ChannelId!, 10);
+                resolvedVideoId = latestVideoIds.FirstOrDefault();
                 if (!string.IsNullOrWhiteSpace(resolvedVideoId))
                 {
                     video.VideoId = resolvedVideoId;
@@ -130,21 +131,23 @@ namespace InfluencerMatch.Infrastructure.Services
 
             if ((comments == null || comments.Count == 0)
                 && request.AutoFetchComments
-                && !string.IsNullOrWhiteSpace(resolvedVideoId)
+                && !string.IsNullOrWhiteSpace(request.ChannelId)
                 && IsApiKeyConfigured())
             {
-                var fetched = await FetchCommentsForVideoAsync(resolvedVideoId!, maxFetch);
+                var fetched = await FetchCommentsForLatestVideosAsync(request.ChannelId!, maxFetch, 10, resolvedVideoId);
                 comments = fetched.Comments;
                 commentFetchMeta = new
                 {
-                    mode = "youtube_comment_threads_api",
+                    mode = "youtube_comment_threads_api_last_10_videos",
                     requested_max = maxFetch,
                     provided_count = inputComments.Count,
                     fetched_count = fetched.Comments.Count,
-                    total_comment_count = fetched.TotalResults ?? stats.CommentCount,
+                    total_comment_count = fetched.TotalResults,
                     fetched_all = fetched.FetchedAll,
                     capped = fetched.Capped,
-                    note = fetched.Note + (video.VideoId == resolvedVideoId ? " (videoId auto-resolved from channelId)" : string.Empty)
+                    videos_considered = fetched.VideoIdsConsidered,
+                    videos_with_comments = fetched.VideosWithComments,
+                    note = fetched.Note
                 };
             }
 
@@ -714,7 +717,81 @@ namespace InfluencerMatch.Infrastructure.Services
             }
         }
 
+        private async Task<(List<YouTubeCommentDto> Comments, bool FetchedAll, bool Capped, int? TotalResults, int VideoIdsConsidered, int VideosWithComments, string Note)> FetchCommentsForLatestVideosAsync(
+            string channelId,
+            int maxComments,
+            int maxVideos,
+            string? preferredVideoId)
+        {
+            var ids = await ResolveLatestVideoIdsByChannelIdAsync(channelId, Math.Max(1, maxVideos));
+            if (!string.IsNullOrWhiteSpace(preferredVideoId) && !ids.Contains(preferredVideoId!, StringComparer.OrdinalIgnoreCase))
+            {
+                ids.Insert(0, preferredVideoId!);
+            }
+
+            ids = ids
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(Math.Max(1, maxVideos))
+                .ToList();
+
+            if (ids.Count == 0)
+            {
+                return (new List<YouTubeCommentDto>(), false, false, null, 0, 0, "Could not resolve latest video IDs for channel.");
+            }
+
+            var merged = new List<YouTubeCommentDto>();
+            int? totalResults = 0;
+            var fetchedAll = true;
+            var capped = false;
+            var videosWithComments = 0;
+
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var remaining = maxComments - merged.Count;
+                if (remaining <= 0)
+                {
+                    capped = true;
+                    break;
+                }
+
+                var videosLeft = ids.Count - i;
+                var perVideoCap = Math.Max(20, (int)Math.Ceiling((double)remaining / Math.Max(1, videosLeft)));
+                var fetched = await FetchCommentsForVideoAsync(ids[i], perVideoCap);
+
+                if (fetched.Comments.Count > 0) videosWithComments++;
+                merged.AddRange(fetched.Comments);
+
+                if (!fetched.FetchedAll) fetchedAll = false;
+                if (fetched.Capped) capped = true;
+
+                if (fetched.TotalResults.HasValue)
+                {
+                    totalResults = (totalResults ?? 0) + fetched.TotalResults.Value;
+                }
+                else
+                {
+                    totalResults = null;
+                }
+            }
+
+            if (merged.Count > maxComments)
+            {
+                merged = merged.Take(maxComments).ToList();
+                capped = true;
+            }
+
+            var note = $"Fetched {merged.Count} comments across latest {ids.Count} videos for creator-level analysis.";
+            return (merged, fetchedAll && !capped, capped, totalResults, ids.Count, videosWithComments, note);
+        }
+
         private async Task<string?> ResolveLatestVideoIdByChannelIdAsync(string channelId)
+        {
+            var ids = await ResolveLatestVideoIdsByChannelIdAsync(channelId, 1);
+            return ids.FirstOrDefault();
+        }
+
+        private async Task<List<string>> ResolveLatestVideoIdsByChannelIdAsync(string channelId, int maxResults)
         {
             try
             {
@@ -723,18 +800,22 @@ namespace InfluencerMatch.Infrastructure.Services
                     + "?part=snippet"
                     + "&type=video"
                     + "&order=date"
-                    + "&maxResults=1"
+                    + $"&maxResults={Math.Clamp(maxResults, 1, 50)}"
                     + $"&channelId={Uri.EscapeDataString(channelId)}"
                     + $"&key={Uri.EscapeDataString(_apiKey!)}";
 
                 var resp = await http.GetFromJsonAsync<YtSearchResponse>(url);
-                var videoId = resp?.items?.FirstOrDefault()?.id?.videoId;
-                return string.IsNullOrWhiteSpace(videoId) ? null : videoId;
+                return (resp?.items ?? new List<YtSearchItem>())
+                    .Select(x => x?.id?.videoId)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to resolve latest videoId for channel {ChannelId}", channelId);
-                return null;
+                _logger.LogWarning(ex, "Failed to resolve latest videoIds for channel {ChannelId}", channelId);
+                return new List<string>();
             }
         }
 
