@@ -170,7 +170,23 @@ namespace InfluencerMatch.Application.DTOs
         public string?               Description  { get; set; }
         public string?               InstagramHandle { get; set; }
         public string?               Bio          { get; set; }
+        public double?               GrowthRate   { get; set; }
+        public string?               GrowthCategory { get; set; }
+        public long?                 PredictedSubscribers12Months { get; set; }
+        public int                   SponsoredVideoCount { get; set; }
+        public decimal?              EstimatedSponsorshipValueInrMin { get; set; }
+        public decimal?              EstimatedSponsorshipValueInrMax { get; set; }
+        public AudienceDemographicsDto? AudienceDemographics { get; set; }
+        public List<MarketplaceBrandCollaborationDto> BrandCollaborations { get; set; } = new();
         public List<ChannelVideoDto> RecentVideos { get; set; } = new();
+    }
+
+    public class MarketplaceBrandCollaborationDto
+    {
+        public string BrandName { get; set; } = string.Empty;
+        public int MentionCount { get; set; }
+        public DateTime? LastDetectedAt { get; set; }
+        public string? SampleVideoTitle { get; set; }
     }
 
     // ── Collaboration Requests ───────────────────────────────────────────────

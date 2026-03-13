@@ -9,7 +9,7 @@
           <p class="text-muted mb-0">India-only marketplace with regional-language creator discovery.</p>
         </div>
         <div class="d-flex gap-2 align-items-center">
-          <span class="badge rounded-pill text-bg-light border fs-6 px-3 py-2">{{ totalResults }} creators</span>
+            <span class="badge rounded-pill text-bg-light border fs-6 px-3 py-2">{{ visibleResultCount }} creators</span>
           <span class="badge rounded-pill bg-primary-subtle text-primary border px-3 py-2">Live Filters</span>
         </div>
       </div>
@@ -71,7 +71,15 @@
               <option value="views">Total Views</option>
             </select>
           </div>
-          <div class="col-md-1 d-flex gap-1">
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold mb-1">Min Est. Cost ($)</label>
+            <input v-model.number="filters.minEstimatedCost" type="number" min="0" class="form-control form-control-sm" placeholder="100" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold mb-1">Max Est. Cost ($)</label>
+            <input v-model.number="filters.maxEstimatedCost" type="number" min="0" class="form-control form-control-sm" placeholder="10000" />
+          </div>
+          <div class="col-md-2 d-flex gap-1">
             <button class="btn btn-primary btn-sm w-100" @click="search(1)">Go</button>
             <button class="btn btn-outline-secondary btn-sm" @click="resetFilters">✕</button>
           </div>
@@ -113,6 +121,13 @@
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="fw-semibold mb-0">Workflow: {{ workflow.request.campaignTitle }}</h6>
             <span class="small text-muted">{{ workflow.completionPercent }}% complete</span>
+          </div>
+
+          <div class="d-flex gap-2 flex-wrap mb-3">
+            <button class="btn btn-outline-primary btn-sm" @click="advanceWorkflow('proposal')">Send Proposal</button>
+            <button class="btn btn-outline-secondary btn-sm" @click="advanceWorkflow('contract')">Draft Contract</button>
+            <button class="btn btn-outline-success btn-sm" @click="advanceWorkflow('payment')">Release Payment</button>
+            <span class="badge border align-self-center">Status: {{ workflow.request.status }}</span>
           </div>
 
           <div class="row g-2 mb-2">
@@ -184,7 +199,7 @@
     </div>
 
     <!-- No results -->
-    <div v-else-if="creators.length === 0" class="card border-0 p-5 text-center text-muted">
+    <div v-else-if="displayedCreators.length === 0" class="card border-0 p-5 text-center text-muted">
       <p class="fs-5 fw-semibold">No creators found for current filters.</p>
       <p class="small mb-3">Broaden your filters or move to a higher plan for wider discovery access.</p>
       <div class="d-flex justify-content-center gap-2">
@@ -196,7 +211,7 @@
     <!-- Creator grid -->
     <div v-else>
       <div class="row g-3 mb-4">
-        <div v-for="c in creators" :key="c.creatorProfileId" class="col-md-6 col-lg-4">
+        <div v-for="c in displayedCreators" :key="c.creatorProfileId" class="col-md-6 col-lg-4">
           <div class="card h-100 border-0 shadow-sm creator-card" @click="openDetail(c)" style="cursor:pointer;">
             <div class="card-body p-3">
               <div class="d-flex gap-3 align-items-start mb-3">
@@ -243,10 +258,12 @@
 
               <div class="d-flex justify-content-between align-items-center">
                 <span v-if="c.country" class="text-muted small">📍 {{ c.country }}</span>
+                <span class="text-muted small">CPM: ${{ estimateCpm(c).toFixed(0) }}</span>
                 <button class="btn btn-outline-primary btn-sm ms-auto" @click.stop="openDetail(c)">
                   View Profile
                 </button>
               </div>
+              <div class="small text-muted mt-2">Estimated campaign cost: ${{ Math.round(estimateCampaignCost(c)).toLocaleString() }}</div>
             </div>
           </div>
         </div>
@@ -318,6 +335,98 @@
                 <div class="text-muted" style="font-size:11px;">Total Views</div>
               </div>
             </div>
+            <div class="col-6">
+              <div class="card border-0 bg-light text-center py-2">
+                <div class="fw-bold text-dark">${{ Math.round(estimateCampaignCost(detail)).toLocaleString() }}</div>
+                <div class="text-muted" style="font-size:11px;">Estimated Campaign Cost</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="card border-0 bg-light text-center py-2">
+                <div class="fw-bold text-dark">${{ estimateCpm(detail).toFixed(0) }}</div>
+                <div class="text-muted" style="font-size:11px;">Estimated CPM</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-0 bg-light p-3 mb-3" v-if="detail.brandCollaborations?.length || detail.predictedSubscribers12Months || detail.estimatedSponsorshipValueInrMin">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-semibold mb-0">Collaboration Intelligence</h6>
+              <span class="badge text-bg-light border">AI signals</span>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-4" v-if="detail.sponsoredVideoCount">
+                <div class="text-muted" style="font-size:11px;">Sponsored Videos Detected</div>
+                <div class="fw-semibold">{{ detail.sponsoredVideoCount }}</div>
+              </div>
+              <div class="col-md-4" v-if="detail.estimatedSponsorshipValueInrMin">
+                <div class="text-muted" style="font-size:11px;">Estimated Sponsorship Value</div>
+                <div class="fw-semibold">₹{{ formatInrRange(detail.estimatedSponsorshipValueInrMin, detail.estimatedSponsorshipValueInrMax) }}</div>
+              </div>
+              <div class="col-md-4" v-if="detail.predictedSubscribers12Months">
+                <div class="text-muted" style="font-size:11px;">12-Month Projection</div>
+                <div class="fw-semibold">{{ fmtNum(detail.predictedSubscribers12Months) }} subs</div>
+                <div class="small text-muted">{{ growthProjectionLabel(detail.growthRate, detail.growthCategory) }}</div>
+              </div>
+            </div>
+
+            <div v-if="detail.brandCollaborations?.length">
+              <div class="text-muted mb-2" style="font-size:11px;">Past Collaborations</div>
+              <div class="d-flex flex-column gap-2">
+                <div v-for="brand in detail.brandCollaborations" :key="`${brand.brandName}-${brand.lastDetectedAt || ''}`" class="border rounded p-2 bg-white">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                      <div class="fw-semibold">{{ brand.brandName }}</div>
+                      <div class="small text-muted" v-if="brand.sampleVideoTitle">{{ brand.sampleVideoTitle }}</div>
+                    </div>
+                    <div class="text-end small text-muted">
+                      <div>{{ brand.mentionCount }} mention{{ brand.mentionCount === 1 ? '' : 's' }}</div>
+                      <div v-if="brand.lastDetectedAt">{{ fmtDateTime(brand.lastDetectedAt) }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-0 bg-light p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-semibold mb-0">Audience Demographics</h6>
+              <span class="badge text-bg-light border">{{ estimatedAudience.source }}</span>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-4">
+                <div class="text-muted" style="font-size:11px;">Primary Age</div>
+                <div class="fw-semibold">{{ estimatedAudience.primaryAge }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-muted" style="font-size:11px;">Gender Split</div>
+                <div class="fw-semibold">{{ estimatedAudience.genderSplit }}</div>
+              </div>
+              <div class="col-4">
+                <div class="text-muted" style="font-size:11px;">Top Geo</div>
+                <div class="fw-semibold">{{ estimatedAudience.topGeo }}</div>
+              </div>
+            </div>
+            <div class="small text-muted">{{ estimatedAudience.summary }}</div>
+          </div>
+
+          <div class="card border-0 bg-light p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-semibold mb-0">Audience Risk Signals</h6>
+              <span class="badge" :class="estimatedRisk.badgeClass">{{ estimatedRisk.label }}</span>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-6">
+                <div class="text-muted" style="font-size:11px;">Authenticity Score</div>
+                <div class="fw-semibold">{{ estimatedRisk.score }}/100</div>
+              </div>
+              <div class="col-6">
+                <div class="text-muted" style="font-size:11px;">Suspicious Engagement</div>
+                <div class="fw-semibold">{{ estimatedRisk.suspiciousRatio }}</div>
+              </div>
+            </div>
+            <div class="small text-muted">{{ estimatedRisk.summary }}</div>
           </div>
 
           <!-- Analytics links -->
@@ -403,7 +512,7 @@ const pageSize = 12;
 const languages = ['Hindi', 'English', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Punjabi', 'Bengali', 'Marathi', 'Haryanvi'];
 
 const filters = ref({
-  search: '', language: '', region: '', category: '', creatorTier: '', sortBy: 'subscribers'
+  search: '', language: '', region: '', category: '', creatorTier: '', sortBy: 'subscribers', minEstimatedCost: null, maxEstimatedCost: null
 });
 
 const indiaStates = [
@@ -469,6 +578,19 @@ const activeFilterEntries = computed(() =>
     })
 );
 
+const displayedCreators = computed(() => creators.value.filter(c => {
+  const est = estimateCampaignCost(c);
+  if (filters.value.minEstimatedCost != null && filters.value.minEstimatedCost !== '' && est < Number(filters.value.minEstimatedCost)) {
+    return false;
+  }
+  if (filters.value.maxEstimatedCost != null && filters.value.maxEstimatedCost !== '' && est > Number(filters.value.maxEstimatedCost)) {
+    return false;
+  }
+  return true;
+}));
+
+const visibleResultCount = computed(() => displayedCreators.value.length || totalResults.value || 0);
+
 const totalPages = computed(() => Math.ceil(totalResults.value / pageSize));
 const visiblePages = computed(() => {
   const total = totalPages.value;
@@ -482,6 +604,9 @@ const detailEngagementMeta = computed(() => {
   if (!detail.value) return engagementMeta(null);
   return creatorEngagementMeta(detail.value);
 });
+
+const estimatedAudience = computed(() => estimateAudienceDemographics(detail.value));
+const estimatedRisk = computed(() => estimateAudienceRisk(detail.value));
 
 onMounted(async () => {
   await search(1);
@@ -517,7 +642,16 @@ async function search(p) {
 }
 
 function resetFilters() {
-  filters.value = { search: '', language: '', region: '', category: '', creatorTier: '', sortBy: 'subscribers' };
+  filters.value = {
+    search: '',
+    language: '',
+    region: '',
+    category: '',
+    creatorTier: '',
+    sortBy: 'subscribers',
+    minEstimatedCost: null,
+    maxEstimatedCost: null
+  };
   search(1);
 }
 
@@ -537,7 +671,9 @@ function labelForFilter(key) {
     region: 'State',
     category: 'Category',
     creatorTier: 'Tier',
-    sortBy: 'Sort'
+    sortBy: 'Sort',
+    minEstimatedCost: 'Min Est Cost',
+    maxEstimatedCost: 'Max Est Cost'
   }[key] || key;
 }
 
@@ -654,8 +790,52 @@ async function completeWorkflow() {
   }
 }
 
+async function advanceWorkflow(action) {
+  if (!workflow.value?.request?.requestId) return;
+
+  const defaults = {
+    proposal: 'Brand shared proposal scope and deliverables.',
+    contract: 'Brand drafted the collaboration contract.',
+    payment: 'Brand released payment milestone.'
+  };
+
+  const note = window.prompt('Optional note', defaults[action] || '');
+  if (note === null) return;
+
+  const endpointMap = {
+    proposal: 'proposal',
+    contract: 'contract',
+    payment: 'payment-release'
+  };
+
+  try {
+    await api.post(`/collaborations/${workflow.value.request.requestId}/${endpointMap[action]}`, {
+      notes: note || defaults[action]
+    });
+    await loadMyRequests();
+    await openWorkflow(workflow.value.request.requestId);
+  } catch (e) {
+    apiError.value = e.response?.data?.error || 'Unable to update workflow stage.';
+  }
+}
+
 function fmtDateTime(d) {
   return new Date(d).toLocaleString();
+}
+
+function formatInrRange(minValue, maxValue) {
+  const min = Number(minValue || 0);
+  const max = Number(maxValue || 0);
+  if (!min && !max) return '—';
+  if (!max || min === max) return Math.round(min).toLocaleString('en-IN');
+  return `${Math.round(min).toLocaleString('en-IN')} - ${Math.round(max).toLocaleString('en-IN')}`;
+}
+
+function growthProjectionLabel(growthRate, growthCategory) {
+  const raw = Number(growthRate);
+  if (!Number.isFinite(raw)) return growthCategory || 'Projection unavailable';
+  const label = growthCategory || (raw >= 0.05 ? 'Rising' : raw >= 0 ? 'Stable' : 'Declining');
+  return `${label} · ${(raw * 100).toFixed(1)}% monthly growth`;
 }
 
 function extractSampleCount(creator) {
@@ -682,6 +862,88 @@ function creatorEngagementMeta(creator) {
     minSampleCount: 3,
     fallback: '—'
   });
+}
+
+function normalizedEngagementRate(creator) {
+  const raw = Number(creator?.engagementRate || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0.02;
+  return raw > 1 ? raw / 100 : raw;
+}
+
+function estimateCpm(creator) {
+  const rate = normalizedEngagementRate(creator);
+  return 120 + Math.min(220, rate * 1800);
+}
+
+function estimateCampaignCost(creator) {
+  const subscribers = Number(creator?.subscribers || 0);
+  const expectedViews = Math.max(800, subscribers * 0.08);
+  return (expectedViews / 1000) * estimateCpm(creator);
+}
+
+function estimateAudienceDemographics(creator) {
+  const source = creator?.audienceDemographics;
+  if (source && Array.isArray(source.countryBreakdown) && source.countryBreakdown.length) {
+    const topGeo = source.countryBreakdown[0]?.key || '—';
+    const primaryAge = source.ageBreakdown?.[0]?.key || '—';
+    const genderA = source.genderBreakdown?.[0];
+    const genderB = source.genderBreakdown?.[1];
+    const genderSplit = genderA
+      ? `${genderA.key} ${Math.round(Number(genderA.percentage || 0))}%${genderB ? ` / ${genderB.key} ${Math.round(Number(genderB.percentage || 0))}%` : ''}`
+      : '—';
+
+    return {
+      primaryAge,
+      genderSplit,
+      topGeo,
+      source: source.source || 'YouTube Analytics',
+      summary: 'Demographics come from connected creator YouTube Analytics snapshots.'
+    };
+  }
+
+  const category = String(creator?.category || '').toLowerCase();
+  const country = creator?.country || 'India';
+
+  let primaryAge = '18-24';
+  let genderSplit = '52% Male / 48% Female';
+
+  if (['beauty', 'fashion', 'lifestyle'].some(x => category.includes(x))) {
+    primaryAge = '18-34';
+    genderSplit = '35% Male / 65% Female';
+  } else if (['gaming', 'tech', 'finance', 'automobile'].some(x => category.includes(x))) {
+    primaryAge = '18-34';
+    genderSplit = '68% Male / 32% Female';
+  } else if (['education', 'business', 'productivity'].some(x => category.includes(x))) {
+    primaryAge = '25-34';
+    genderSplit = '56% Male / 44% Female';
+  }
+
+  return {
+    primaryAge,
+    genderSplit,
+    topGeo: `${country}${creator?.region ? `, ${creator.region}` : ''}`,
+    source: 'Estimated',
+    summary: 'Demographic values are estimated from category, language, region, and creator size until first-party audience data is available.'
+  };
+}
+
+function estimateAudienceRisk(creator) {
+  const engagement = normalizedEngagementRate(creator);
+  const subscribers = Number(creator?.subscribers || 0);
+  const tierPenalty = subscribers > 1_000_000 && engagement < 0.015 ? 18 : 0;
+  const engagementPenalty = engagement < 0.01 ? 28 : engagement < 0.02 ? 14 : 4;
+  const score = Math.max(42, Math.min(96, Math.round(100 - tierPenalty - engagementPenalty)));
+  const suspiciousRatio = `${Math.max(4, 100 - score).toFixed(0)}%`;
+  const label = score >= 82 ? 'Low Risk' : score >= 68 ? 'Watch' : 'Review';
+  const badgeClass = score >= 82 ? 'text-bg-success' : score >= 68 ? 'text-bg-warning' : 'text-bg-danger';
+
+  return {
+    score,
+    suspiciousRatio,
+    label,
+    badgeClass,
+    summary: 'Risk estimate is inferred from engagement consistency, creator size, and expected view efficiency. Use detailed analytics for campaign approval.'
+  };
 }
 
 function fmtNum(n) {

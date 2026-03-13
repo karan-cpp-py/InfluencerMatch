@@ -69,6 +69,19 @@ namespace InfluencerMatch.Infrastructure.Services
                     RegexOptions.Compiled | RegexOptions.IgnoreCase)))
                 .ToArray();
 
+        private static readonly (string Product, Regex Pattern)[] ProductPatterns =
+            new[]
+            {
+                "smartphone", "phone", "earbuds", "headphones", "neckband", "speaker", "laptop", "tablet",
+                "smartwatch", "fitness band", "camera", "television", "tv", "monitor", "keyboard", "mouse",
+                "gaming mouse", "gaming keyboard", "serum", "sunscreen", "moisturizer", "face wash",
+                "shampoo", "conditioner", "lipstick", "sneakers", "shoes", "jeans", "tshirt", "jacket",
+                "protein", "whey", "creatine", "pre workout", "mutual fund", "credit card", "insurance",
+                "bike", "motorcycle", "scooter", "car", "course", "subscription", "app"
+            }
+            .Select(p => (p, new Regex(@"\b" + Regex.Escape(p) + @"\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)))
+            .ToArray();
+
         // ── Fields ───────────────────────────────────────────────────────────
         private readonly ApplicationDbContext _db;
         private readonly IHttpClientFactory   _http;
@@ -115,8 +128,8 @@ namespace InfluencerMatch.Infrastructure.Services
                     ? Math.Round((double)(v.Likes + v.Comments) / v.Views * 100.0, 4)
                     : 0.0;
 
-                var brand = DetectBrand(v.Title, v.Description);
-                var videoType = brand != null ? "Sponsored" : "Organic";
+                var detection = DetectSponsorship(v.Title, v.Description);
+                var videoType = detection.BrandName != null ? "Sponsored" : "Organic";
 
                 var existing = await _db.VideoAnalytics
                     .FirstOrDefaultAsync(va => va.YoutubeVideoId == v.VideoId, ct);
@@ -132,7 +145,9 @@ namespace InfluencerMatch.Infrastructure.Services
                         Likes          = v.Likes,
                         Comments       = v.Comments,
                         EngagementRate = engRate,
-                        BrandName      = brand,
+                        BrandName      = detection.BrandName,
+                        ProductName    = detection.ProductName,
+                        DetectionConfidence = detection.Confidence,
                         VideoType      = videoType,
                         PublishedAt    = v.PublishedAt,
                         RecordedAt     = now
@@ -145,7 +160,9 @@ namespace InfluencerMatch.Infrastructure.Services
                     existing.Likes          = v.Likes;
                     existing.Comments       = v.Comments;
                     existing.EngagementRate = engRate;
-                    existing.BrandName      = brand;
+                    existing.BrandName      = detection.BrandName;
+                    existing.ProductName    = detection.ProductName;
+                    existing.DetectionConfidence = detection.Confidence;
                     existing.VideoType      = videoType;
                     existing.RecordedAt     = now;
                 }
@@ -244,6 +261,8 @@ namespace InfluencerMatch.Infrastructure.Services
                     Comments       = v.Comments,
                     EngagementRate = v.EngagementRate,
                     BrandName      = v.BrandName,
+                    ProductName    = v.ProductName,
+                    DetectionConfidence = v.DetectionConfidence,
                     VideoType      = v.VideoType,
                     PublishedAt    = v.PublishedAt
                 }).ToList()
@@ -405,16 +424,50 @@ namespace InfluencerMatch.Infrastructure.Services
 
         // ── Brand detection ───────────────────────────────────────────────────
 
-        private static string? DetectBrand(string title, string description)
+        private static SponsorshipDetection DetectSponsorship(string title, string description)
         {
             var searchText = $"{title} {description}";
-            foreach (var (brand, pattern) in BrandPatterns)
+            string? brand = null;
+            foreach (var (candidateBrand, pattern) in BrandPatterns)
             {
                 if (pattern.IsMatch(searchText))
-                    return brand;
+                {
+                    brand = ToDisplayCase(candidateBrand);
+                    break;
+                }
             }
-            return null;
+
+            if (brand == null)
+                return new SponsorshipDetection(null, null, 0);
+
+            string? product = null;
+            foreach (var (candidate, pattern) in ProductPatterns)
+            {
+                if (pattern.IsMatch(searchText))
+                {
+                    product = ToDisplayCase(candidate);
+                    break;
+                }
+            }
+
+            var confidence = 0.72;
+            if (description.Length > 120) confidence += 0.08;
+            if (product != null) confidence += 0.1;
+            if (Regex.IsMatch(searchText, @"\b(ad|sponsored|partner|collab|paid|promotion)\b", RegexOptions.IgnoreCase))
+                confidence += 0.08;
+
+            return new SponsorshipDetection(brand, product, Math.Round(Math.Min(confidence, 0.98), 3));
         }
+
+        private static string ToDisplayCase(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+            return string.Join(' ', value
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(token => char.ToUpperInvariant(token[0]) + token[1..].ToLowerInvariant()));
+        }
+
+        private sealed record SponsorshipDetection(string? BrandName, string? ProductName, double Confidence);
 
         private static long ParseLong(System.Text.Json.JsonElement stats, string key)
         {

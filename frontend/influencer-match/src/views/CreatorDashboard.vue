@@ -12,6 +12,12 @@
           <span v-if="channel" class="status-pill linked">Channel linked</span>
           <span v-else class="status-pill pending">Channel not linked</span>
           <span class="status-pill soft">Profile {{ profileStrength }}% complete</span>
+          <a
+            href="mailto:partnerships@influencermatch.ai?subject=Creator%20Brand%20Partnership%20Inquiry"
+            class="btn btn-sm btn-outline-light fw-semibold"
+          >
+            Contact Brands
+          </a>
           <router-link
             to="/creator/latest-video-analysis"
             class="btn btn-sm btn-light fw-semibold"
@@ -183,6 +189,69 @@
             <div v-if="linkSuccess" class="alert alert-success mt-2 mb-0 py-2 small">✓ {{ linkSuccess }}</div>
           </div>
         </div>
+
+        <div v-if="channel" class="card border-0 shadow-sm section-card mt-3">
+          <div class="card-body p-4">
+            <h5 class="fw-semibold mb-1">YouTube Audience Demographics</h5>
+            <p class="text-muted small mb-3">
+              Connect once using Google OAuth, then ingest demographics without manually pasting access tokens.
+            </p>
+            <div class="row g-2 mb-2">
+              <div class="col-lg-9">
+                <input v-model.trim="oauthCode" class="form-control" placeholder="Paste Google authorization code after consent" />
+              </div>
+              <div class="col-lg-3 d-grid">
+                <button class="btn btn-outline-primary" @click="openGoogleConsent" :disabled="connectingGoogle">
+                  <span v-if="connectingGoogle" class="spinner-border spinner-border-sm me-1"></span>
+                  Connect Google
+                </button>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mb-2">
+              <button class="btn btn-sm btn-outline-primary" @click="exchangeOAuthCode" :disabled="linkingGoogleCode || !oauthCode">Link Code</button>
+            </div>
+            <div class="row g-2 mb-2">
+              <div class="col-lg-9">
+                <input v-model.trim="demographicsToken" class="form-control" placeholder="Optional: manual access token override" />
+              </div>
+              <div class="col-lg-3 d-grid">
+                <button class="btn btn-primary" @click="ingestDemographics" :disabled="ingestingDemographics || !demographicsToken">
+                  <span v-if="ingestingDemographics" class="spinner-border spinner-border-sm me-1"></span>
+                  Ingest with Token
+                </button>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mb-2">
+              <button class="btn btn-sm btn-primary" @click="ingestDemographicsWithoutToken" :disabled="ingestingDemographics">Ingest from Connected Account</button>
+              <button class="btn btn-sm btn-outline-secondary" @click="loadDemographics" :disabled="loadingDemographics">Load Snapshot</button>
+            </div>
+            <div v-if="demographicsError" class="alert alert-warning py-2 small mb-2">{{ demographicsError }}</div>
+            <div v-if="demographicsLoaded" class="alert alert-success py-2 small mb-2">Demographics snapshot updated.</div>
+            <div v-if="demographics" class="row g-3">
+              <div class="col-md-4">
+                <div class="stat-box text-center">
+                  <div class="stat-label">Top Country</div>
+                  <div class="stat-val">{{ demographics.countryBreakdown?.[0]?.key || '—' }}</div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="stat-box text-center">
+                  <div class="stat-label">Top Age Group</div>
+                  <div class="stat-val">{{ demographics.ageBreakdown?.[0]?.key || '—' }}</div>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="stat-box text-center">
+                  <div class="stat-label">Top Gender</div>
+                  <div class="stat-val">{{ demographics.genderBreakdown?.[0]?.key || '—' }}</div>
+                </div>
+              </div>
+              <div class="col-12 small text-muted">
+                Snapshot window: {{ fmtDate(demographics.windowStartDate) }} to {{ fmtDate(demographics.windowEndDate) }}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ── TAB: Recent Videos ─────────────────────────────────────────── -->
@@ -206,6 +275,79 @@
         </div>
       </div>
 
+      <!-- ── TAB: Insights ──────────────────────────────────────────────── -->
+      <div v-if="tab === 'insights'" class="card border-0 shadow-sm section-card">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-semibold mb-0">Creator Health & Coaching Insights</h5>
+            <button class="btn btn-sm btn-outline-secondary" @click="loadInsights">Refresh</button>
+          </div>
+
+          <div v-if="insightsLoading" class="text-center py-4">
+            <div class="spinner-border text-primary"></div>
+          </div>
+
+          <div v-else-if="insightsError" class="alert alert-warning">{{ insightsError }}</div>
+
+          <div v-else-if="insights">
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-md-3">
+                <article class="metric-card"><p class="metric-label">Health Score</p><p class="metric-value">{{ Number(insights.healthScorecard.compositeScore || 0).toFixed(1) }}</p></article>
+              </div>
+              <div class="col-6 col-md-3">
+                <article class="metric-card"><p class="metric-label">7d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend7d || 'flat' }}</p></article>
+              </div>
+              <div class="col-6 col-md-3">
+                <article class="metric-card"><p class="metric-label">30d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend30d || 'flat' }}</p></article>
+              </div>
+              <div class="col-6 col-md-3">
+                <article class="metric-card"><p class="metric-label">Brand Safety</p><p class="metric-value">{{ Number(insights.healthScorecard.brandSafetyScore || 0).toFixed(1) }}</p></article>
+              </div>
+            </div>
+
+            <div class="alert alert-info py-2 small mb-3">{{ insights.healthScorecard.whyExplanation }}</div>
+
+            <h6 class="fw-semibold">Audience Quality & Authenticity</h6>
+            <div class="row g-2 mb-3">
+              <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Suspicious Ratio</div><div class="stat-val">{{ (Number(insights.audienceQuality.suspiciousEngagementRatio || 0) * 100).toFixed(1) }}%</div></div></div>
+              <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">LCV Consistency</div><div class="stat-val">{{ Number(insights.audienceQuality.likeCommentViewConsistencyScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Volatility</div><div class="stat-val">{{ Number(insights.audienceQuality.engagementVolatilityScore || 0).toFixed(1) }}</div></div></div>
+              <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Reused Pattern</div><div class="stat-val">{{ Number(insights.audienceQuality.reusedCommentPatternScore || 0).toFixed(1) }}</div></div></div>
+            </div>
+
+            <div class="small text-muted mb-3">{{ insights.audienceQuality.explanation }}</div>
+
+            <h6 class="fw-semibold">Best Posting Window</h6>
+            <p class="mb-2">{{ insights.coaching.bestPostingWindow || 'Not enough data yet' }}</p>
+
+            <h6 class="fw-semibold">Content Format Performance</h6>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                  <tr>
+                    <th>Format</th>
+                    <th class="text-end">Avg Views</th>
+                    <th class="text-end">Avg Engagement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="f in insights.coaching.contentFormatPerformance || []" :key="f.format">
+                    <td>{{ f.format }}</td>
+                    <td class="text-end">{{ fmtNum(f.avgViews) }}</td>
+                    <td class="text-end">{{ (Number(f.avgEngagementRate || 0) * 100).toFixed(2) }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h6 class="fw-semibold">Weekly Action List</h6>
+            <ul class="mb-0">
+              <li v-for="a in insights.coaching.weeklyActionList || []" :key="a" class="mb-1">{{ a }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- ── TAB: Collaborations ───────────────────────────────────────── -->
       <div v-if="tab === 'collabs'">
         <div v-if="loadingCollabs" class="text-center py-4">
@@ -220,80 +362,6 @@
             <div class="card-body p-4">
               <div class="d-flex justify-content-between align-items-start">
                 <div>
-
-                <!-- ── TAB: Insights ──────────────────────────────────────────────── -->
-                <div v-if="tab === 'insights'" class="card border-0 shadow-sm section-card">
-                  <div class="card-body p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                      <h5 class="fw-semibold mb-0">Creator Health & Coaching Insights</h5>
-                      <button class="btn btn-sm btn-outline-secondary" @click="loadInsights">Refresh</button>
-                    </div>
-
-                    <div v-if="insightsLoading" class="text-center py-4">
-                      <div class="spinner-border text-primary"></div>
-                    </div>
-
-                    <div v-else-if="insightsError" class="alert alert-warning">{{ insightsError }}</div>
-
-                    <div v-else-if="insights">
-                      <div class="row g-2 mb-3">
-                        <div class="col-6 col-md-3">
-                          <article class="metric-card"><p class="metric-label">Health Score</p><p class="metric-value">{{ Number(insights.healthScorecard.compositeScore || 0).toFixed(1) }}</p></article>
-                        </div>
-                        <div class="col-6 col-md-3">
-                          <article class="metric-card"><p class="metric-label">7d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend7d || 'flat' }}</p></article>
-                        </div>
-                        <div class="col-6 col-md-3">
-                          <article class="metric-card"><p class="metric-label">30d Trend</p><p class="metric-value text-capitalize">{{ insights.healthScorecard.trend?.trend30d || 'flat' }}</p></article>
-                        </div>
-                        <div class="col-6 col-md-3">
-                          <article class="metric-card"><p class="metric-label">Brand Safety</p><p class="metric-value">{{ Number(insights.healthScorecard.brandSafetyScore || 0).toFixed(1) }}</p></article>
-                        </div>
-                      </div>
-
-                      <div class="alert alert-info py-2 small mb-3">{{ insights.healthScorecard.whyExplanation }}</div>
-
-                      <h6 class="fw-semibold">Audience Quality & Authenticity</h6>
-                      <div class="row g-2 mb-3">
-                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Suspicious Ratio</div><div class="stat-val">{{ (Number(insights.audienceQuality.suspiciousEngagementRatio || 0) * 100).toFixed(1) }}%</div></div></div>
-                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">LCV Consistency</div><div class="stat-val">{{ Number(insights.audienceQuality.likeCommentViewConsistencyScore || 0).toFixed(1) }}</div></div></div>
-                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Volatility</div><div class="stat-val">{{ Number(insights.audienceQuality.engagementVolatilityScore || 0).toFixed(1) }}</div></div></div>
-                        <div class="col-md-3"><div class="stat-box text-center"><div class="stat-label">Reused Pattern</div><div class="stat-val">{{ Number(insights.audienceQuality.reusedCommentPatternScore || 0).toFixed(1) }}</div></div></div>
-                      </div>
-
-                      <div class="small text-muted mb-3">{{ insights.audienceQuality.explanation }}</div>
-
-                      <h6 class="fw-semibold">Best Posting Window</h6>
-                      <p class="mb-2">{{ insights.coaching.bestPostingWindow || 'Not enough data yet' }}</p>
-
-                      <h6 class="fw-semibold">Content Format Performance</h6>
-                      <div class="table-responsive mb-3">
-                        <table class="table table-sm table-bordered">
-                          <thead class="table-light">
-                            <tr>
-                              <th>Format</th>
-                              <th class="text-end">Avg Views</th>
-                              <th class="text-end">Avg Engagement</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr v-for="f in insights.coaching.contentFormatPerformance || []" :key="f.format">
-                              <td>{{ f.format }}</td>
-                              <td class="text-end">{{ fmtNum(f.avgViews) }}</td>
-                              <td class="text-end">{{ (Number(f.avgEngagementRate || 0) * 100).toFixed(2) }}%</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <h6 class="fw-semibold">Weekly Action List</h6>
-                      <ul class="mb-0">
-                        <li v-for="a in insights.coaching.weeklyActionList || []" :key="a" class="mb-1">{{ a }}</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
                   <h6 class="fw-bold mb-1">{{ c.campaignTitle }}</h6>
                   <p class="text-muted small mb-1">From: <strong>{{ c.brandName }}</strong></p>
                   <p class="text-muted small mb-1">Budget: <strong>${{ c.budget?.toLocaleString() }}</strong></p>
@@ -316,6 +384,17 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <h6 class="fw-semibold mb-0">Milestones</h6>
                   <span class="small text-muted">{{ selectedWorkflow.completionPercent }}% complete</span>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap mb-3">
+                  <span class="badge border">Workflow Status: {{ selectedWorkflow.request.status }}</span>
+                  <button
+                    v-if="selectedWorkflow.request.status === 'ContractDrafted' || selectedWorkflow.request.status === 'ProposalSent'"
+                    class="btn btn-outline-success btn-sm"
+                    @click="signContract(selectedWorkflow.request.requestId)"
+                  >
+                    Sign Contract
+                  </button>
                 </div>
 
                 <div v-if="loadingWorkflow" class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></div>
@@ -357,10 +436,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import api from '../services/api';
 import { authUserName } from '../services/auth';
 import { trackFunnelEvent } from '../services/funnel';
 import { engagementMeta } from '../utils/engagement';
+
+const route = useRoute();
 
 const userName = computed(() => authUserName.value);
 
@@ -379,6 +461,15 @@ const channelUrl = ref('');
 const linkingChannel = ref(false);
 const linkError = ref('');
 const linkSuccess = ref('');
+const demographicsToken = ref('');
+const demographics = ref(null);
+const ingestingDemographics = ref(false);
+const loadingDemographics = ref(false);
+const demographicsError = ref('');
+const demographicsLoaded = ref(false);
+const connectingGoogle = ref(false);
+const linkingGoogleCode = ref(false);
+const oauthCode = ref('');
 
 // Videos
 const recentVideos = ref([]);
@@ -439,6 +530,11 @@ const creatorEngagement = computed(() => {
 });
 
 onMounted(async () => {
+  const codeFromQuery = String(route.query.code || '').trim();
+  if (codeFromQuery) {
+    oauthCode.value = codeFromQuery;
+  }
+
   try {
     // Load dashboard data from API
     const res = await api.get('/creator/dashboard');
@@ -447,6 +543,7 @@ onMounted(async () => {
     channel.value = d.channel;
     recentVideos.value = d.recentVideos || [];
     pendingCollabs.value = d.pendingCollaborations || 0;
+    await loadDemographics();
     // Prefill edit form
     editProfile.value = {
       country: d.profile.country || '',
@@ -509,10 +606,99 @@ async function linkChannel() {
     // Reload recent videos
     const vRes = await api.get('/creator/dashboard');
     recentVideos.value = vRes.data.recentVideos || [];
+    await loadDemographics();
   } catch (e) {
     linkError.value = e.userMessage || e.response?.data?.error || 'Failed to link channel. Check the URL and try again.';
   } finally {
     linkingChannel.value = false;
+  }
+}
+
+async function loadDemographics() {
+  if (!channel.value) return;
+  loadingDemographics.value = true;
+  demographicsLoaded.value = false;
+  demographicsError.value = '';
+  try {
+    const res = await api.get('/creator/audience-demographics');
+    demographics.value = res.data;
+  } catch (e) {
+    demographics.value = null;
+    const status = Number(e?.response?.status || 0);
+    if (status !== 404) {
+      demographicsError.value = e.userMessage || e.response?.data?.error || 'Unable to load demographics snapshot.';
+    }
+  } finally {
+    loadingDemographics.value = false;
+  }
+}
+
+async function ingestDemographics() {
+  if (!demographicsToken.value) return;
+  ingestingDemographics.value = true;
+  demographicsLoaded.value = false;
+  demographicsError.value = '';
+  try {
+    const res = await api.post('/creator/audience-demographics/ingest', {
+      accessToken: demographicsToken.value
+    });
+    demographics.value = res.data;
+    demographicsLoaded.value = true;
+    demographicsToken.value = '';
+  } catch (e) {
+    demographicsError.value = e.userMessage || e.response?.data?.error || 'Demographics ingestion failed.';
+  } finally {
+    ingestingDemographics.value = false;
+  }
+}
+
+async function ingestDemographicsWithoutToken() {
+  ingestingDemographics.value = true;
+  demographicsLoaded.value = false;
+  demographicsError.value = '';
+  try {
+    const res = await api.post('/creator/audience-demographics/ingest', {});
+    demographics.value = res.data;
+    demographicsLoaded.value = true;
+  } catch (e) {
+    demographicsError.value = e.userMessage || e.response?.data?.error || 'Demographics ingestion failed.';
+  } finally {
+    ingestingDemographics.value = false;
+  }
+}
+
+async function openGoogleConsent() {
+  connectingGoogle.value = true;
+  demographicsError.value = '';
+  try {
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    const res = await api.post('/creator/audience-demographics/connect-url', { redirectUri });
+    const url = res.data?.url;
+    if (!url) throw new Error('No OAuth URL returned');
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (e) {
+    demographicsError.value = e.userMessage || e.response?.data?.error || 'Unable to start Google OAuth consent.';
+  } finally {
+    connectingGoogle.value = false;
+  }
+}
+
+async function exchangeOAuthCode() {
+  if (!oauthCode.value) return;
+  linkingGoogleCode.value = true;
+  demographicsError.value = '';
+  try {
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    await api.post('/creator/audience-demographics/exchange-code', {
+      redirectUri,
+      code: oauthCode.value
+    });
+    oauthCode.value = '';
+    demographicsLoaded.value = true;
+  } catch (e) {
+    demographicsError.value = e.userMessage || e.response?.data?.error || 'Unable to link Google authorization code.';
+  } finally {
+    linkingGoogleCode.value = false;
   }
 }
 
@@ -589,13 +775,34 @@ async function updateMilestone(milestone, status) {
   }
 }
 
+async function signContract(requestId) {
+  const notes = window.prompt('Optional contract note', 'Creator reviewed and signed the contract.');
+  if (notes === null) return;
+
+  try {
+    await api.post(`/collaborations/${requestId}/contract`, {
+      notes: notes || 'Creator reviewed and signed the contract.'
+    });
+
+    updateCollabStatus(requestId, 'ContractSigned');
+    await openWorkflow(requestId);
+  } catch (e) {
+    console.error('Contract signing failed', e);
+  }
+}
+
 function updateCollabStatus(id, status) {
   const c = collabs.value.find(x => x.requestId === id);
   if (c) c.status = status;
 }
 
 function statusBadge(status) {
-  return { 'bg-warning text-dark': status === 'Pending', 'bg-success': status === 'Accepted', 'bg-danger': status === 'Rejected' };
+  return {
+    'bg-warning text-dark': status === 'Pending' || status === 'ProposalSent',
+    'bg-success': status === 'Accepted' || status === 'ContractSigned' || status === 'PaymentReleased' || status === 'Completed',
+    'bg-info text-dark': status === 'ContractDrafted',
+    'bg-danger': status === 'Rejected'
+  };
 }
 
 function fmtNum(n) {

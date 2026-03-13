@@ -65,7 +65,14 @@
                     <input v-model.trim="referralCode" class="form-control" placeholder="e.g. IM0123098" />
                   </div>
 
-                  <button class="btn btn-primary w-100" type="submit">Register</button>
+                  <div class="form-check mb-3">
+                    <input id="acceptTerms" v-model="acceptTerms" class="form-check-input" type="checkbox" />
+                    <label class="form-check-label" for="acceptTerms">
+                      I agree to the <router-link to="/terms" target="_blank">Terms and Conditions</router-link>
+                    </label>
+                  </div>
+
+                  <button class="btn btn-primary w-100" type="submit" :disabled="!acceptTerms">Register</button>
                 </form>
                 <div v-if="error" class="alert alert-danger mt-3">{{ error }}</div>
                 <div class="text-center mt-3">
@@ -98,6 +105,7 @@ const companyName = ref('');
 const country = ref('India');
 const phoneNumber = ref('');
 const referralCode = ref('');
+const acceptTerms = ref(false);
 const error = ref('');
 
 async function submit() {
@@ -125,10 +133,20 @@ async function submit() {
         customerType: accountType.value,
         country: country.value,
         phoneNumber: phoneNumber.value || null,
-        referralCode: referralCode.value || null
+        referralCode: referralCode.value || null,
+        acceptTerms: acceptTerms.value
       });
 
       const payload = normalizeAuthPayload(res.data);
+      if (!payload.emailVerified) {
+        const query = new URLSearchParams({ email: email.value, sent: '1' });
+        if (payload.verificationToken) {
+          query.set('token', payload.verificationToken);
+        }
+        router.push(`/verify-email?${query.toString()}`);
+        return;
+      }
+
       const auth = authFromToken(payload.accessToken);
       setAuth(payload.accessToken, auth.role, payload.refreshToken);
       await trackFunnelEvent('signup', { role: auth.role });

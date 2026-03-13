@@ -162,6 +162,10 @@ api.interceptors.response.use(
       || originalRequest?._retry
       || endpoint.includes('/auth/login')
       || endpoint.includes('/auth/register')
+      || endpoint.includes('/auth/google')
+      || endpoint.includes('/auth/verify-email')
+      || endpoint.includes('/auth/request-password-reset')
+      || endpoint.includes('/auth/reset-password')
       || endpoint.includes('/auth/refresh')
     ) {
       return Promise.reject(error);

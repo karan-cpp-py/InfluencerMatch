@@ -179,5 +179,71 @@ namespace InfluencerMatch.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+
+        [HttpPost("{requestId:int}/proposal")]
+        [Authorize(Roles = "Brand,Agency")]
+        public async Task<IActionResult> SendProposal(int requestId, [FromBody] CollaborationStageUpdateDto dto)
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+                var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+                var note = string.IsNullOrWhiteSpace(dto.Notes)
+                    ? "Brand shared a formal proposal."
+                    : dto.Notes.Trim();
+
+                var result = await _collaboration.AdvanceStageAsync(requestId, userId, role, "ProposalSent", note);
+                return Ok(result);
+            }
+            catch (System.InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{requestId:int}/contract")]
+        [Authorize(Roles = "Brand,Agency,Creator")]
+        public async Task<IActionResult> UpdateContract(int requestId, [FromBody] CollaborationStageUpdateDto dto)
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+                var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+                var isCreator = string.Equals(role, "Creator", System.StringComparison.OrdinalIgnoreCase);
+
+                var status = isCreator ? "ContractSigned" : "ContractDrafted";
+                var note = string.IsNullOrWhiteSpace(dto.Notes)
+                    ? (isCreator ? "Creator signed the contract." : "Brand uploaded a draft contract.")
+                    : dto.Notes.Trim();
+
+                var result = await _collaboration.AdvanceStageAsync(requestId, userId, role, status, note);
+                return Ok(result);
+            }
+            catch (System.InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{requestId:int}/payment-release")]
+        [Authorize(Roles = "Brand,Agency")]
+        public async Task<IActionResult> ReleasePayment(int requestId, [FromBody] CollaborationStageUpdateDto dto)
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+                var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+                var note = string.IsNullOrWhiteSpace(dto.Notes)
+                    ? "Brand marked payment as released for this collaboration."
+                    : dto.Notes.Trim();
+
+                var result = await _collaboration.AdvanceStageAsync(requestId, userId, role, "PaymentReleased", note);
+                return Ok(result);
+            }
+            catch (System.InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
     }
 }

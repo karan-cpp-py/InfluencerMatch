@@ -43,6 +43,11 @@ namespace InfluencerMatch.Application.DTOs
         public string RevisionNotes { get; set; } = string.Empty;
     }
 
+    public class CollaborationStageUpdateDto
+    {
+        public string? Notes { get; set; }
+    }
+
     public class CollaborationWorkflowDto
     {
         public CollaborationRequestDto Request { get; set; } = new();

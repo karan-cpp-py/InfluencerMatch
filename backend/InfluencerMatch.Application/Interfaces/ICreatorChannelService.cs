@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +36,35 @@ namespace InfluencerMatch.Application.Interfaces
         /// not configured, quota is exhausted, or the URL cannot be resolved.
         /// </summary>
         Task<LiveChannelSnapshot?> FetchLiveChannelByUrlAsync(string channelUrl,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// Pulls audience demographics from YouTube Analytics using a creator-owned OAuth token
+        /// and stores a snapshot for brand-facing intelligence.
+        /// </summary>
+        Task<AudienceDemographicsDto> IngestAudienceDemographicsAsync(
+            int creatorProfileId,
+            string accessToken,
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// Returns the latest stored demographics snapshot for this creator profile.
+        /// </summary>
+        Task<AudienceDemographicsDto?> GetAudienceDemographicsAsync(
+            int creatorProfileId,
+            CancellationToken ct = default);
+
+        Task<CreatorYouTubeAnalyticsConnectUrlDto> GetYouTubeAnalyticsConnectUrlAsync(
+            int creatorProfileId,
+            string redirectUri,
+            CancellationToken ct = default);
+
+        Task ExchangeYouTubeAnalyticsCodeAsync(
+            int creatorProfileId,
+            string redirectUri,
+            string code,
             CancellationToken ct = default);
     }
 

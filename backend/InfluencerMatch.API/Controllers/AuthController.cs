@@ -34,6 +34,44 @@ namespace InfluencerMatch.API.Controllers
             return Ok(auth);
         }
 
+        [HttpPost("google")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
+        {
+            var auth = await _authService.LoginWithGoogleAsync(dto.IdToken, HttpContext.Connection.RemoteIpAddress?.ToString());
+            return Ok(auth);
+        }
+
+        [HttpPost("verify-email")]
+        [AllowAnonymous]
+        public async Task<IActionResult> VerifyEmail([FromBody] EmailVerificationRequestDto dto)
+        {
+            var ok = await _authService.VerifyEmailAsync(dto.Token);
+            if (!ok) return BadRequest(new { error = "Invalid or expired verification token." });
+            return Ok(new { message = "Email verified successfully." });
+        }
+
+        [HttpPost("request-password-reset")]
+        [AllowAnonymous]
+        public async Task<IActionResult> RequestPasswordReset([FromBody] PasswordResetRequestDto dto)
+        {
+            var token = await _authService.RequestPasswordResetAsync(dto.Email);
+            return Ok(new
+            {
+                message = "If an account exists for this email, a reset link has been generated.",
+                resetToken = token
+            });
+        }
+
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword([FromBody] PasswordResetConfirmDto dto)
+        {
+            var ok = await _authService.ResetPasswordAsync(dto.Token, dto.NewPassword);
+            if (!ok) return BadRequest(new { error = "Invalid or expired reset token." });
+            return Ok(new { message = "Password reset successful." });
+        }
+
         [HttpPost("refresh")]
         [AllowAnonymous]
         public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequestDto dto)

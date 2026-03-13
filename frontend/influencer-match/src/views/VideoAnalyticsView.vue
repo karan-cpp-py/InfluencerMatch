@@ -250,13 +250,15 @@
                   <th class="text-end">Eng. Rate</th>
                   <th>Type</th>
                   <th>Brand</th>
+                  <th>Product</th>
+                  <th class="text-end">Confidence</th>
                   <th>Published</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="!filteredVideos.length">
-                  <td colspan="9" class="text-center text-muted py-4">No videos match your filters.</td>
+                  <td colspan="11" class="text-center text-muted py-4">No videos match your filters.</td>
                 </tr>
                 <tr v-for="v in pagedVideos" :key="v.youtubeVideoId">
                   <td class="ps-3" style="max-width:280px">
@@ -277,6 +279,16 @@
                     <span v-if="v.brandName" class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle">
                       {{ v.brandName }}
                     </span>
+                    <span v-else class="text-muted small">—</span>
+                  </td>
+                  <td>
+                    <span v-if="v.productName" class="badge bg-info bg-opacity-10 text-info border border-info-subtle">
+                      {{ v.productName }}
+                    </span>
+                    <span v-else class="text-muted small">—</span>
+                  </td>
+                  <td class="text-end">
+                    <span v-if="v.videoType === 'Sponsored'" class="small fw-semibold">{{ fmtConfidence(v.detectionConfidence) }}</span>
                     <span v-else class="text-muted small">—</span>
                   </td>
                   <td class="text-muted" style="font-size:0.72rem;white-space:nowrap">{{ fmtDate(v.publishedAt) }}</td>
@@ -358,6 +370,12 @@ function engClass(r) {
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function fmtConfidence(value) {
+  const v = Number(value || 0);
+  if (!Number.isFinite(v) || v <= 0) return '0%';
+  return `${Math.round(v * 100)}%`;
 }
 
 // ── Computed stats ────────────────────────────────────────────

@@ -16,5 +16,15 @@ namespace InfluencerMatch.Infrastructure.Repositories
         {
             return await _dbSet.FirstOrDefaultAsync(u => u.Email == email);
         }
+
+        public async Task<User?> GetByEmailVerificationTokenAsync(string token)
+        {
+            return await _dbSet.FirstOrDefaultAsync(u => u.EmailVerificationToken == token);
+        }
+
+        public async Task<User?> GetByPasswordResetTokenAsync(string token)
+        {
+            return await _dbSet.FirstOrDefaultAsync(u => u.PasswordResetToken == token);
+        }
     }
 }

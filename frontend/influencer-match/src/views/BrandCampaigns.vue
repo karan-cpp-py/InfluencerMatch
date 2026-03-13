@@ -109,6 +109,12 @@
                     <td>{{ c.targetLocation || '-' }}</td>
                     <td class="text-end">
                       <button class="btn btn-sm btn-primary me-2" @click="viewResults(c.campaignId)">Results</button>
+                      <router-link
+                        class="btn btn-sm btn-outline-primary me-2"
+                        :to="{ path: '/brand/creator-intelligence', query: { campaignId: c.campaignId } }"
+                      >
+                        Intelligence
+                      </router-link>
                       <button class="btn btn-sm btn-outline-info me-2" @click="toggleAnalytics(c)">
                         {{ expandedCampaignId === c.campaignId ? 'Hide Insights' : 'Insights' }}
                       </button>

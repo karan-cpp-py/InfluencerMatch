@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +25,8 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly IYouTubeQuotaTracker   _quota;
         private readonly ILogger<CreatorChannelService> _logger;
         private readonly string? _apiKey;
+        private readonly string? _googleClientId;
+        private readonly string? _googleClientSecret;
 
         // ── YouTube API response DTOs ────────────────────────────────────────
         private record YtChannelResponse(List<YtChannelItem>? items);
@@ -74,6 +78,8 @@ namespace InfluencerMatch.Infrastructure.Services
             long? likeCount,
             long? commentCount);
 
+        private record YtAnalyticsResponse(List<List<JsonElement>>? rows);
+
         public CreatorChannelService(
             ApplicationDbContext db,
             IHttpClientFactory http,
@@ -89,6 +95,8 @@ namespace InfluencerMatch.Infrastructure.Services
                 config["YouTube:ApiKey"]
                 ?? config["YouTube__ApiKey"]
                 ?? config["YOUTUBE_API_KEY"];
+            _googleClientId = config["GoogleAuth:ClientId"] ?? config["GoogleAuth__ClientId"];
+            _googleClientSecret = config["GoogleAuth:ClientSecret"] ?? config["GoogleAuth__ClientSecret"];
         }
 
         // ── Public API ───────────────────────────────────────────────────────
@@ -260,6 +268,125 @@ namespace InfluencerMatch.Infrastructure.Services
             }
         }
 
+        public async Task<AudienceDemographicsDto> IngestAudienceDemographicsAsync(
+            int creatorProfileId,
+            string accessToken,
+            DateTime? startDate = null,
+            DateTime? endDate = null,
+            CancellationToken ct = default)
+        {
+            var profile = await _db.CreatorProfiles
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId, ct)
+                ?? throw new InvalidOperationException("Creator profile not found.");
+
+            var resolvedAccessToken = accessToken;
+            if (string.IsNullOrWhiteSpace(resolvedAccessToken))
+            {
+                if (string.IsNullOrWhiteSpace(profile.YouTubeAnalyticsRefreshToken))
+                {
+                    throw new InvalidOperationException("Connect YouTube Analytics first or provide an access token.");
+                }
+
+                resolvedAccessToken = await RefreshAccessTokenAsync(profile.YouTubeAnalyticsRefreshToken, ct);
+            }
+
+            var channel = await _db.CreatorChannels
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.CreatorProfileId == creatorProfileId, ct);
+            if (channel == null)
+                throw new InvalidOperationException("Link a YouTube channel before ingesting audience demographics.");
+
+            var today = DateTime.UtcNow.Date;
+            var resolvedEnd = (endDate?.Date ?? today.AddDays(-1));
+            var resolvedStart = (startDate?.Date ?? resolvedEnd.AddDays(-28));
+
+            if (resolvedStart >= resolvedEnd)
+                resolvedStart = resolvedEnd.AddDays(-28);
+
+            var snapshot = await FetchAudienceDemographicsFromYouTubeAsync(
+                resolvedAccessToken,
+                resolvedStart,
+                resolvedEnd,
+                ct);
+
+            profile.AudienceDemographicsJson = JsonSerializer.Serialize(snapshot);
+            profile.AudienceDemographicsFetchedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+
+            return snapshot;
+        }
+
+        public Task<CreatorYouTubeAnalyticsConnectUrlDto> GetYouTubeAnalyticsConnectUrlAsync(
+            int creatorProfileId,
+            string redirectUri,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(_googleClientId))
+                throw new InvalidOperationException("Google OAuth client ID is not configured.");
+
+            if (string.IsNullOrWhiteSpace(redirectUri))
+                throw new InvalidOperationException("Redirect URI is required.");
+
+            var scope = Uri.EscapeDataString("https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.readonly");
+            var state = Uri.EscapeDataString($"creator:{creatorProfileId}:{Guid.NewGuid():N}");
+            var uri =
+                "https://accounts.google.com/o/oauth2/v2/auth"
+                + $"?client_id={Uri.EscapeDataString(_googleClientId)}"
+                + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}"
+                + "&response_type=code"
+                + $"&scope={scope}"
+                + "&access_type=offline"
+                + "&prompt=consent"
+                + $"&state={state}";
+
+            return Task.FromResult(new CreatorYouTubeAnalyticsConnectUrlDto { Url = uri });
+        }
+
+        public async Task ExchangeYouTubeAnalyticsCodeAsync(
+            int creatorProfileId,
+            string redirectUri,
+            string code,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+                throw new InvalidOperationException("Authorization code is required.");
+
+            var profile = await _db.CreatorProfiles
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId, ct)
+                ?? throw new InvalidOperationException("Creator profile not found.");
+
+            var refreshToken = await ExchangeCodeForRefreshTokenAsync(code, redirectUri, ct);
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                throw new InvalidOperationException("Google did not return a refresh token. Retry consent with prompt=consent.");
+
+            profile.YouTubeAnalyticsRefreshToken = refreshToken;
+            profile.YouTubeAnalyticsConnectedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        public async Task<AudienceDemographicsDto?> GetAudienceDemographicsAsync(
+            int creatorProfileId,
+            CancellationToken ct = default)
+        {
+            var profile = await _db.CreatorProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId, ct);
+            if (profile == null || string.IsNullOrWhiteSpace(profile.AudienceDemographicsJson))
+                return null;
+
+            try
+            {
+                return JsonSerializer.Deserialize<AudienceDemographicsDto>(
+                    profile.AudienceDemographicsJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse audience demographics for profile {ProfileId}", creatorProfileId);
+                return null;
+            }
+        }
+
         // ── URL parsing + resolution ─────────────────────────────────────────
 
         /// <summary>
@@ -339,6 +466,174 @@ namespace InfluencerMatch.Infrastructure.Services
                     $"forUsername={Uri.EscapeDataString(trimmed)}", ct);
 
             return null;
+        }
+
+        private async Task<AudienceDemographicsDto> FetchAudienceDemographicsFromYouTubeAsync(
+            string accessToken,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken ct)
+        {
+            using var client = _http.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var start = startDate.ToString("yyyy-MM-dd");
+            var end = endDate.ToString("yyyy-MM-dd");
+
+            var ageGenderUrl =
+                "https://youtubeanalytics.googleapis.com/v2/reports"
+                + $"?ids=channel==MINE&startDate={start}&endDate={end}"
+                + "&metrics=viewerPercentage&dimensions=ageGroup,gender&sort=-viewerPercentage";
+
+            var countryUrl =
+                "https://youtubeanalytics.googleapis.com/v2/reports"
+                + $"?ids=channel==MINE&startDate={start}&endDate={end}"
+                + "&metrics=viewerPercentage&dimensions=country&sort=-viewerPercentage";
+
+            var ageGender = await GetAnalyticsRowsAsync(client, ageGenderUrl, ct);
+            var country = await GetAnalyticsRowsAsync(client, countryUrl, ct);
+
+            var ageBreakdown = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            var genderBreakdown = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in ageGender)
+            {
+                if (row.Count < 3) continue;
+                var age = GetCellText(row[0]);
+                var gender = GetCellText(row[1]);
+                var pct = GetCellNumber(row[2]);
+                if (string.IsNullOrWhiteSpace(age) || string.IsNullOrWhiteSpace(gender) || pct <= 0) continue;
+
+                if (!ageBreakdown.TryAdd(age, pct)) ageBreakdown[age] += pct;
+                if (!genderBreakdown.TryAdd(gender, pct)) genderBreakdown[gender] += pct;
+            }
+
+            var countryBreakdown = country
+                .Where(r => r.Count >= 2)
+                .Select(r => new AudienceBreakdownPointDto
+                {
+                    Key = GetCellText(r[0]),
+                    Percentage = Math.Round(GetCellNumber(r[1]), 2)
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Key) && x.Percentage > 0)
+                .OrderByDescending(x => x.Percentage)
+                .Take(10)
+                .ToList();
+
+            return new AudienceDemographicsDto
+            {
+                Source = "YouTubeAnalytics",
+                FetchedAtUtc = DateTime.UtcNow,
+                WindowStartDate = startDate,
+                WindowEndDate = endDate,
+                CountryBreakdown = countryBreakdown,
+                AgeBreakdown = ageBreakdown
+                    .Select(kv => new AudienceBreakdownPointDto { Key = kv.Key, Percentage = Math.Round(kv.Value, 2) })
+                    .OrderByDescending(x => x.Percentage)
+                    .ToList(),
+                GenderBreakdown = genderBreakdown
+                    .Select(kv => new AudienceBreakdownPointDto { Key = kv.Key, Percentage = Math.Round(kv.Value, 2) })
+                    .OrderByDescending(x => x.Percentage)
+                    .ToList()
+            };
+        }
+
+        private async Task<List<List<JsonElement>>> GetAnalyticsRowsAsync(
+            HttpClient client,
+            string url,
+            CancellationToken ct)
+        {
+            using var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "YouTube Analytics call failed: {Status}. Body: {Body}",
+                    (int)response.StatusCode,
+                    body.Length > 300 ? body[..300] : body);
+                throw new InvalidOperationException("YouTube Analytics request failed. Reconnect Google with yt-analytics.readonly scope and retry.");
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<YtAnalyticsResponse>(cancellationToken: ct);
+            return payload?.rows ?? new List<List<JsonElement>>();
+        }
+
+        private static string GetCellText(JsonElement cell)
+        {
+            if (cell.ValueKind == JsonValueKind.String)
+                return cell.GetString() ?? string.Empty;
+
+            return cell.ToString();
+        }
+
+        private static double GetCellNumber(JsonElement cell)
+        {
+            if (cell.ValueKind == JsonValueKind.Number && cell.TryGetDouble(out var number))
+                return number;
+
+            if (cell.ValueKind == JsonValueKind.String
+                && double.TryParse(cell.GetString(), out var parsed))
+                return parsed;
+
+            return 0;
+        }
+
+        private async Task<string> RefreshAccessTokenAsync(string refreshToken, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(_googleClientId) || string.IsNullOrWhiteSpace(_googleClientSecret))
+                throw new InvalidOperationException("Google OAuth client credentials are not configured.");
+
+            using var client = _http.CreateClient();
+            using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = _googleClientId,
+                ["client_secret"] = _googleClientSecret,
+                ["refresh_token"] = refreshToken,
+                ["grant_type"] = "refresh_token"
+            });
+
+            using var response = await client.PostAsync("https://oauth2.googleapis.com/token", form, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException("Unable to refresh YouTube Analytics access token.");
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("access_token", out var tokenNode))
+                throw new InvalidOperationException("Refresh response did not include access token.");
+
+            return tokenNode.GetString() ?? throw new InvalidOperationException("Invalid access token returned by Google.");
+        }
+
+        private async Task<string?> ExchangeCodeForRefreshTokenAsync(string code, string redirectUri, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(_googleClientId) || string.IsNullOrWhiteSpace(_googleClientSecret))
+                throw new InvalidOperationException("Google OAuth client credentials are not configured.");
+            if (string.IsNullOrWhiteSpace(redirectUri))
+                throw new InvalidOperationException("Redirect URI is required.");
+
+            using var client = _http.CreateClient();
+            using var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["code"] = code,
+                ["client_id"] = _googleClientId,
+                ["client_secret"] = _googleClientSecret,
+                ["redirect_uri"] = redirectUri,
+                ["grant_type"] = "authorization_code"
+            });
+
+            using var response = await client.PostAsync("https://oauth2.googleapis.com/token", form, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException("Unable to exchange Google authorization code.");
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("refresh_token", out var refreshNode)
+                ? refreshNode.GetString()
+                : null;
         }
 
         private async Task<string?> ResolveViaApiAsync(string queryParam, CancellationToken ct)

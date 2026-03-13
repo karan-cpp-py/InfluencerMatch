@@ -14,6 +14,8 @@ namespace InfluencerMatch.Application.DTOs
         public long     Comments       { get; set; }
         public double   EngagementRate { get; set; }
         public string?  BrandName      { get; set; }
+        public string?  ProductName    { get; set; }
+        public double   DetectionConfidence { get; set; }
         public string   VideoType      { get; set; } = "Organic";
         public DateTime PublishedAt    { get; set; }
     }

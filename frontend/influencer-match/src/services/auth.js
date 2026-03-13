@@ -29,11 +29,15 @@ updateUserName(authToken.value);
 export function normalizeAuthPayload(payload = {}) {
   const accessToken = payload.accessToken || payload.token || payload.Token || '';
   const refreshToken = payload.refreshToken || payload.RefreshToken || '';
+  const emailVerified = Boolean(payload.emailVerified ?? payload.EmailVerified ?? false);
+  const verificationToken = payload.verificationToken || payload.VerificationToken || '';
 
   return {
     accessToken,
     refreshToken,
-    expiresInSeconds: Number(payload.expiresInSeconds || payload.ExpiresInSeconds || 0) || 0
+    expiresInSeconds: Number(payload.expiresInSeconds || payload.ExpiresInSeconds || 0) || 0,
+    emailVerified,
+    verificationToken
   };
 }
 

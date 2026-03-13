@@ -94,6 +94,7 @@
                 <li><router-link class="dropdown-item" to="/videos/trending">🔥 Trending Videos</router-link></li>
                 <template v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
                   <li><hr class="dropdown-divider"/></li>
+                  <li><router-link class="dropdown-item" to="/brand/creator-intelligence">🧠 Creator Intelligence</router-link></li>
                   <li><router-link class="dropdown-item" to="/brand/analytics">📊 Brand Analytics</router-link></li>
                   <li><router-link class="dropdown-item" to="/brand/opportunities">💡 Opportunities</router-link></li>
                 </template>

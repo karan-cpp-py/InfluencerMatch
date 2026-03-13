@@ -26,6 +26,7 @@ namespace InfluencerMatch.Application.Interfaces
         Task<CollaborationMilestoneDto> AddMilestoneAsync(int requestId, int actorUserId, AddMilestoneDto dto);
         Task<CollaborationMilestoneDto> UpdateMilestoneStatusAsync(int milestoneId, int actorUserId, string actorRole, UpdateMilestoneStatusDto dto);
         Task<CollaborationMilestoneDto> RequestRevisionAsync(int milestoneId, int actorUserId, MilestoneRevisionDto dto);
+        Task<CollaborationRequestDto> AdvanceStageAsync(int requestId, int actorUserId, string actorRole, string nextStatus, string message);
         Task<CollaborationRequestDto> MarkCompletedAsync(int requestId, int actorUserId, string actorRole);
     }
 }

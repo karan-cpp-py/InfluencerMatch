@@ -275,6 +275,33 @@ namespace InfluencerMatch.Infrastructure.Services
             return ToDto(request);
         }
 
+        public async Task<CollaborationRequestDto> AdvanceStageAsync(int requestId, int actorUserId, string actorRole, string nextStatus, string message)
+        {
+            var request = await EnsureRequestAccessAsync(requestId, actorUserId, actorRole);
+
+            var normalizedStatus = string.IsNullOrWhiteSpace(nextStatus)
+                ? throw new InvalidOperationException("nextStatus is required.")
+                : nextStatus.Trim();
+
+            request.Status = normalizedStatus;
+            request.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            var note = string.IsNullOrWhiteSpace(message) ? normalizedStatus : message.Trim();
+            await AddActivityAsync(requestId, actorUserId, actorRole, "WorkflowStage", note);
+            await MaybeNotifyCounterpartyAsync(
+                request,
+                actorUserId,
+                actorRole,
+                "collaboration.stage.updated",
+                "Collaboration workflow updated",
+                note);
+
+            await _db.Entry(request).Reference(r => r.Brand).LoadAsync();
+            await LoadCreatorChannelName(request);
+            return ToDto(request);
+        }
+
         // ── Helpers ──────────────────────────────────────────────────────────
 
         private async Task<CollaborationRequestDto> RespondAsync(

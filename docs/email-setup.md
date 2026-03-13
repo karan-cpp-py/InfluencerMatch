@@ -93,7 +93,10 @@ $env:EmailNotifications__Password="<SENDGRID_API_KEY>"
 $env:EmailNotifications__FromEmail="no-reply@yourdomain.com"
 $env:EmailNotifications__FromName="InfluencerMatch"
 $env:EmailNotifications__UseSsl="true"
+$env:App__FrontendBaseUrl="https://your-app.vercel.app"
 ```
+
+`App__FrontendBaseUrl` is required for email verification and password reset links. If it is left at the local default, users will receive localhost links.
 
 ## 4. Quick Verification
 
@@ -108,6 +111,7 @@ dotnet run
 - send/accept/reject a collaboration request
 - successful/failed payment webhook
 - subscription cancel/reactivate
+- register a new account or request a password reset to verify auth email links
 
 3. Check:
 - in-app notifications (`GET /api/notifications`)

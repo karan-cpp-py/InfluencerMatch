@@ -20,6 +20,10 @@ namespace InfluencerMatch.Domain.Entities
         public string? InstagramHandle { get; set; }
         public string? ContactEmail    { get; set; }
         public string? Bio             { get; set; }
+        public string? AudienceDemographicsJson { get; set; }
+        public DateTime? AudienceDemographicsFetchedAt { get; set; }
+        public string? YouTubeAnalyticsRefreshToken { get; set; }
+        public DateTime? YouTubeAnalyticsConnectedAt { get; set; }
 
         public DateTime CreatedAt { get; set; }
 

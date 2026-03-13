@@ -59,7 +59,7 @@ export function homeRouteForRole(role, features = {}) {
 
   // Brand/Agency should land in workbench routes based on feature rollout.
   if (role === 'Brand' || role === 'Agency') {
-    if (features.enableBrandActivation) return '/brand';
+    if (features.enableBrandActivation) return '/brand/creator-intelligence';
     if (features.enableMarketplace) return '/marketplace';
     return '/brand/waitlist';
   }

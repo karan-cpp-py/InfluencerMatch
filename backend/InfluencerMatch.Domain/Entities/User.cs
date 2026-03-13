@@ -15,6 +15,14 @@ namespace InfluencerMatch.Domain.Entities
 
         public string PasswordHash { get; set; }
 
+        public bool EmailVerified { get; set; } = true;
+        public string? EmailVerificationToken { get; set; }
+        public DateTime? EmailVerificationTokenExpiresAt { get; set; }
+        public string? PasswordResetToken { get; set; }
+        public DateTime? PasswordResetTokenExpiresAt { get; set; }
+        public DateTime? TermsAcceptedAt { get; set; }
+        public string? AuthProvider { get; set; }
+
         // Kept for existing role-based authorization.
         public string Role { get; set; } = "Individual";
 

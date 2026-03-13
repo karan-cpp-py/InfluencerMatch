@@ -3,6 +3,7 @@ using System;
 using InfluencerMatch.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace InfluencerMatch.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260313181510_AddAuthSecurityFields")]
+    partial class AddAuthSecurityFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -884,12 +887,6 @@ namespace InfluencerMatch.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("CreatorProfileId"));
 
-                    b.Property<DateTime?>("AudienceDemographicsFetchedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("AudienceDemographicsJson")
-                        .HasColumnType("text");
-
                     b.Property<string>("Bio")
                         .HasColumnType("text");
 
@@ -913,12 +910,6 @@ namespace InfluencerMatch.Infrastructure.Migrations
 
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("YouTubeAnalyticsConnectedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("YouTubeAnalyticsRefreshToken")
-                        .HasColumnType("text");
 
                     b.HasKey("CreatorProfileId");
 
@@ -1821,17 +1812,11 @@ namespace InfluencerMatch.Infrastructure.Migrations
                     b.Property<int>("CreatorId")
                         .HasColumnType("integer");
 
-                    b.Property<double>("DetectionConfidence")
-                        .HasColumnType("double precision");
-
                     b.Property<double>("EngagementRate")
                         .HasColumnType("double precision");
 
                     b.Property<long>("Likes")
                         .HasColumnType("bigint");
-
-                    b.Property<string>("ProductName")
-                        .HasColumnType("text");
 
                     b.Property<DateTime>("PublishedAt")
                         .HasColumnType("timestamp with time zone");

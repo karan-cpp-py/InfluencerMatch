@@ -27,6 +27,12 @@ namespace InfluencerMatch.Domain.Entities
         /// <summary>Detected brand name, or null for organic videos.</summary>
         public string?  BrandName        { get; set; }
 
+        /// <summary>Detected product/entity associated with the brand mention.</summary>
+        public string?  ProductName      { get; set; }
+
+        /// <summary>0.0 - 1.0 confidence score for the sponsorship classification.</summary>
+        public double   DetectionConfidence { get; set; }
+
         /// <summary>"Sponsored" or "Organic".</summary>
         public string   VideoType        { get; set; } = "Organic";
 

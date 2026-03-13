@@ -142,6 +142,77 @@ namespace InfluencerMatch.API.Controllers
             return Ok(result);
         }
 
+        [HttpPost("audience-demographics/ingest")]
+        [Authorize(Roles = "Creator")]
+        public async Task<IActionResult> IngestAudienceDemographics(
+            [FromBody] AudienceDemographicsIngestRequestDto dto,
+            CancellationToken ct)
+        {
+            try
+            {
+                var profileId = await GetCreatorProfileIdAsync();
+                var result = await _channel.IngestAudienceDemographicsAsync(
+                    profileId,
+                    dto.AccessToken,
+                    dto.StartDate,
+                    dto.EndDate,
+                    ct);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("audience-demographics/connect-url")]
+        [Authorize(Roles = "Creator")]
+        public async Task<IActionResult> GetAudienceDemographicsConnectUrl(
+            [FromBody] CreatorYouTubeAnalyticsConnectRequestDto dto,
+            CancellationToken ct)
+        {
+            try
+            {
+                var profileId = await GetCreatorProfileIdAsync();
+                var result = await _channel.GetYouTubeAnalyticsConnectUrlAsync(profileId, dto.RedirectUri, ct);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("audience-demographics/exchange-code")]
+        [Authorize(Roles = "Creator")]
+        public async Task<IActionResult> ExchangeAudienceDemographicsCode(
+            [FromBody] CreatorYouTubeAnalyticsConnectCodeDto dto,
+            CancellationToken ct)
+        {
+            try
+            {
+                var profileId = await GetCreatorProfileIdAsync();
+                await _channel.ExchangeYouTubeAnalyticsCodeAsync(profileId, dto.RedirectUri, dto.Code, ct);
+                return Ok(new { message = "YouTube Analytics connected." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("audience-demographics")]
+        [Authorize(Roles = "Creator")]
+        public async Task<IActionResult> GetAudienceDemographics(CancellationToken ct)
+        {
+            var profileId = await GetCreatorProfileIdAsync();
+            var result = await _channel.GetAudienceDemographicsAsync(profileId, ct);
+            if (result == null)
+                return NotFound(new { error = "No audience demographics snapshot available. Ingest first." });
+
+            return Ok(result);
+        }
+
         // ── Dashboard ────────────────────────────────────────────────────────
 
         /// <summary>Creator dashboard: profile + channel stats + recent videos + pending collaborations.</summary>

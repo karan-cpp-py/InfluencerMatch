@@ -74,7 +74,11 @@ VITE_API_URL=https://localhost:60587/api
 5. Set these required environment variables in Render:
    - `ConnectionStrings__DefaultConnection`
    - `JwtSettings__Secret`
+   - `App__FrontendBaseUrl` set to your public frontend URL (example: `https://your-app.vercel.app`)
    - `Cors__AllowedOrigins` set to your Vercel frontend URL (example: `https://your-app.vercel.app`)
+   - `EmailNotifications__Enabled=true` if you want real verification/reset emails
+   - `EmailNotifications__SmtpHost`, `EmailNotifications__SmtpPort`, `EmailNotifications__Username`, `EmailNotifications__Password`
+   - `EmailNotifications__FromEmail`, `EmailNotifications__FromName`, `EmailNotifications__UseSsl`
 6. Deploy and confirm health endpoint:
    - `https://<your-render-service>.onrender.com/health`
 
@@ -88,6 +92,7 @@ VITE_API_URL=https://localhost:60587/api
 ### Important
 - Keep secrets only in Render/Vercel environment variables, not in committed files.
 - Free Render instances can sleep; first request after idle can be slow.
+- Email verification and password reset links are generated from `App__FrontendBaseUrl`, so leave that unset only for local development.
 
 ## Docs
 - SMTP email setup for lifecycle notifications: `docs/email-setup.md`

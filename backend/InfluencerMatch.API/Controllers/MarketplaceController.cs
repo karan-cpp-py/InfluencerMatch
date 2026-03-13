@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.API.Services;
@@ -192,6 +193,10 @@ namespace InfluencerMatch.API.Controllers
                 ? EngagementRateEstimator.Clamp(row.ch.EngagementRate)
                 : EstimateFromVideoRows(row.ch.Subscribers, recentVideos);
 
+            var intelligence = creatorId.HasValue
+                ? await BuildCreatorIntelligenceAsync(creatorId.Value, row.ch.Subscribers, detailEngagement, ct)
+                : MarketplaceCreatorIntelligence.Empty;
+
             return Ok(new MarketplaceCreatorDetailDto
             {
                 CreatorProfileId = row.pr.CreatorProfileId,
@@ -211,6 +216,14 @@ namespace InfluencerMatch.API.Controllers
                 Description      = row.ch.Description,
                 InstagramHandle  = row.pr.InstagramHandle,
                 Bio              = row.pr.Bio,
+                GrowthRate       = intelligence.GrowthRate,
+                GrowthCategory   = intelligence.GrowthCategory,
+                PredictedSubscribers12Months = intelligence.PredictedSubscribers12Months,
+                SponsoredVideoCount = intelligence.SponsoredVideoCount,
+                EstimatedSponsorshipValueInrMin = intelligence.EstimatedSponsorshipValueInrMin,
+                EstimatedSponsorshipValueInrMax = intelligence.EstimatedSponsorshipValueInrMax,
+                AudienceDemographics = ParseAudienceDemographics(row.pr.AudienceDemographicsJson),
+                BrandCollaborations = intelligence.BrandCollaborations,
                 RecentVideos     = recentVideos
             });
         }
@@ -463,7 +476,7 @@ namespace InfluencerMatch.API.Controllers
                 return NotFound(new { error = "Influencer not found." });
 
             // Read from SuperAdmin-populated cache — no live YouTube calls on detail load
-            LiveChannelSnapshot? live = !string.IsNullOrWhiteSpace(row.i.YouTubeLink)
+            LiveChannelSnapshot live = !string.IsNullOrWhiteSpace(row.i.YouTubeLink)
                 ? _legacyCache.GetSnapshot(row.i.YouTubeLink!)
                 : null;
 
@@ -487,6 +500,10 @@ namespace InfluencerMatch.API.Controllers
                 live?.TotalViews ?? 0,
                 live?.VideoCount ?? 0);
 
+            var intelligence = legacyCreatorId.HasValue
+                ? await BuildCreatorIntelligenceAsync(legacyCreatorId.Value, live?.Subscribers ?? row.i.Followers, detailEngagement, ct)
+                : MarketplaceCreatorIntelligence.Empty;
+
             return Ok(new MarketplaceCreatorDetailDto
             {
                 CreatorProfileId = -row.i.InfluencerId,
@@ -506,6 +523,13 @@ namespace InfluencerMatch.API.Controllers
                 Description      = live?.Description ?? $"YouTube: {row.i.YouTubeLink}",
                 InstagramHandle  = row.i.InstagramLink,
                 Bio              = null,
+                GrowthRate       = intelligence.GrowthRate,
+                GrowthCategory   = intelligence.GrowthCategory,
+                PredictedSubscribers12Months = intelligence.PredictedSubscribers12Months,
+                SponsoredVideoCount = intelligence.SponsoredVideoCount,
+                EstimatedSponsorshipValueInrMin = intelligence.EstimatedSponsorshipValueInrMin,
+                EstimatedSponsorshipValueInrMax = intelligence.EstimatedSponsorshipValueInrMax,
+                BrandCollaborations = intelligence.BrandCollaborations,
                 RecentVideos     = recentVideos
             });
         }
@@ -538,6 +562,21 @@ namespace InfluencerMatch.API.Controllers
                 })
                 .ToListAsync(ct);
 
+            var detailEngagement = EngagementRateEstimator.EstimateOrStored(
+                creator.EngagementRate,
+                creator.Subscribers,
+                creator.TotalViews,
+                creator.VideoCount,
+                creator.AvgViews);
+
+            var intelligence = await BuildCreatorIntelligenceAsync(creator.CreatorId, creator.Subscribers, detailEngagement, ct);
+
+            var importedProfile = creator.UserId.HasValue
+                ? await _db.CreatorProfiles
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.UserId == creator.UserId.Value, ct)
+                : null;
+
             return Ok(new MarketplaceCreatorDetailDto
             {
                 CreatorProfileId = ImportedCreatorProfileOffset + creator.CreatorId,
@@ -547,12 +586,7 @@ namespace InfluencerMatch.API.Controllers
                 ThumbnailUrl = creator.ThumbnailUrl,
                 Subscribers = creator.Subscribers,
                 TotalViews = creator.TotalViews,
-                EngagementRate = EngagementRateEstimator.EstimateOrStored(
-                    creator.EngagementRate,
-                    creator.Subscribers,
-                    creator.TotalViews,
-                    creator.VideoCount,
-                    creator.AvgViews),
+                EngagementRate = detailEngagement,
                 CreatorTier = creator.CreatorTier,
                 Language = creator.Language,
                 Category = creator.Category,
@@ -562,8 +596,107 @@ namespace InfluencerMatch.API.Controllers
                 Description = creator.Description,
                 InstagramHandle = creator.InstagramHandle,
                 Bio = null,
+                GrowthRate = intelligence.GrowthRate,
+                GrowthCategory = intelligence.GrowthCategory,
+                PredictedSubscribers12Months = intelligence.PredictedSubscribers12Months,
+                SponsoredVideoCount = intelligence.SponsoredVideoCount,
+                EstimatedSponsorshipValueInrMin = intelligence.EstimatedSponsorshipValueInrMin,
+                EstimatedSponsorshipValueInrMax = intelligence.EstimatedSponsorshipValueInrMax,
+                AudienceDemographics = ParseAudienceDemographics(importedProfile?.AudienceDemographicsJson),
+                BrandCollaborations = intelligence.BrandCollaborations,
                 RecentVideos = recentVideos
             });
+        }
+
+        private async Task<MarketplaceCreatorIntelligence> BuildCreatorIntelligenceAsync(
+            int creatorId,
+            long subscribers,
+            double engagementRate,
+            CancellationToken ct)
+        {
+            var brandCollaborations = await _db.BrandMentions
+                .AsNoTracking()
+                .Where(m => m.CreatorId == creatorId)
+                .GroupBy(m => m.BrandName)
+                .Select(g => new MarketplaceBrandCollaborationDto
+                {
+                    BrandName = g.Key,
+                    MentionCount = g.Count(),
+                    LastDetectedAt = g.Max(x => x.DetectedAt),
+                    SampleVideoTitle = g.OrderByDescending(x => x.DetectedAt).Select(x => x.VideoTitle).FirstOrDefault()
+                })
+                .OrderByDescending(x => x.LastDetectedAt)
+                .Take(6)
+                .ToListAsync(ct);
+
+            var sponsoredVideos = await _db.VideoAnalytics
+                .AsNoTracking()
+                .Where(v => v.CreatorId == creatorId && (v.VideoType == "Sponsored" || v.BrandName != null))
+                .ToListAsync(ct);
+
+            var growth = await _db.CreatorGrowthScores
+                .AsNoTracking()
+                .Where(g => g.CreatorId == creatorId)
+                .Select(g => new { g.GrowthRate, g.GrowthCategory })
+                .FirstOrDefaultAsync(ct);
+
+            var monthlyGrowthRate = growth?.GrowthRate;
+            var projectedSubscribers = monthlyGrowthRate.HasValue
+                ? ProjectSubscribers(subscribers, monthlyGrowthRate.Value, 12)
+                : 0;
+
+            var sponsoredViews = sponsoredVideos.Count > 0
+                ? sponsoredVideos.Average(v => (double)v.Views)
+                : 0;
+
+            var sponsorshipRange = sponsoredVideos.Count > 0
+                ? EstimateSponsorshipRangeInr(sponsoredViews, engagementRate)
+                : (Min: 0m, Max: 0m);
+
+            return new MarketplaceCreatorIntelligence
+            {
+                BrandCollaborations = brandCollaborations,
+                SponsoredVideoCount = sponsoredVideos.Count,
+                GrowthRate = monthlyGrowthRate ?? 0,
+                GrowthCategory = growth?.GrowthCategory ?? string.Empty,
+                PredictedSubscribers12Months = projectedSubscribers,
+                EstimatedSponsorshipValueInrMin = sponsorshipRange.Min,
+                EstimatedSponsorshipValueInrMax = sponsorshipRange.Max
+            };
+        }
+
+        private static long ProjectSubscribers(long subscribers, double monthlyGrowthRate, int months)
+        {
+            if (subscribers <= 0 || months <= 0)
+                return 0;
+
+            var boundedRate = Math.Clamp(monthlyGrowthRate, -0.10, 0.18);
+            var projected = subscribers * Math.Pow(1 + boundedRate, months);
+            return projected <= 0 ? 0 : (long)Math.Round(projected);
+        }
+
+        private static (decimal Min, decimal Max) EstimateSponsorshipRangeInr(double avgSponsoredViews, double engagementRate)
+        {
+            if (avgSponsoredViews <= 0)
+                return (0m, 0m);
+
+            var normalizedEngagement = engagementRate > 1 ? engagementRate / 100.0 : engagementRate;
+            var multiplier = 0.9m + (decimal)Math.Clamp(normalizedEngagement * 4.0, 0.0, 0.9);
+            var baseValue = (decimal)(avgSponsoredViews / 1000d) * 650m * multiplier;
+            return (Math.Round(baseValue * 0.75m, 0), Math.Round(baseValue * 1.35m, 0));
+        }
+
+        private sealed class MarketplaceCreatorIntelligence
+        {
+            public static MarketplaceCreatorIntelligence Empty { get; } = new();
+
+            public double GrowthRate { get; init; }
+            public string GrowthCategory { get; init; }
+            public long PredictedSubscribers12Months { get; init; }
+            public int SponsoredVideoCount { get; init; }
+            public decimal EstimatedSponsorshipValueInrMin { get; init; }
+            public decimal EstimatedSponsorshipValueInrMax { get; init; }
+            public List<MarketplaceBrandCollaborationDto> BrandCollaborations { get; init; } = new();
         }
 
         private static string TierFromFollowers(long followers) => followers switch
@@ -575,7 +708,7 @@ namespace InfluencerMatch.API.Controllers
             _            => "Nano"
         };
 
-        private static string? NormalizeRegionKey(string? region)
+        private static string NormalizeRegionKey(string region)
         {
             if (string.IsNullOrWhiteSpace(region)) return null;
             var probe = region.Trim().ToLowerInvariant();
@@ -633,6 +766,24 @@ namespace InfluencerMatch.API.Controllers
                 return EngagementRateEstimator.EstimateFromAverages(subscribers, withViews.Average(v => (double)v.ViewCount));
 
             return EngagementRateEstimator.Clamp(ratios.Average());
+        }
+
+        private static AudienceDemographicsDto? ParseAudienceDemographics(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
+
+            try
+            {
+                return JsonSerializer.Deserialize<AudienceDemographicsDto>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
     }
 }
