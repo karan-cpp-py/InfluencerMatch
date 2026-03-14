@@ -25,6 +25,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly string _hfModel;
         private readonly string _hfInferenceBaseUrl;
         private readonly string? _hfApiToken;
+        private readonly string? _groqApiKey;
         private readonly IHuggingFaceNlpService _nlpService;
         private readonly IGroqLlmService _groqService;
 
@@ -98,6 +99,11 @@ namespace InfluencerMatch.Infrastructure.Services
                 ?? config["HF_TOKEN"]
                 ?? config["HF_API_TOKEN"]
                 ?? config["HUGGING_FACE_HUB_TOKEN"];
+
+            _groqApiKey =
+                config["Groq:ApiKey"]
+                ?? config["Groq__ApiKey"]
+                ?? config["GROQ_API_KEY"];
         }
 
         public async Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
@@ -205,6 +211,11 @@ namespace InfluencerMatch.Infrastructure.Services
                     ner_model = "Jean-Baptiste/roberta-large-ner-english",
                     emotion_model = "j-hartmann/emotion-english-distilroberta-base"
                 },
+                groq = new
+                {
+                    token_configured = !string.IsNullOrWhiteSpace(_groqApiKey),
+                    model = "llama-3.1-8b-instant"
+                },
                 runtime = new
                 {
                     sentiment_status = sentimentModel.Status,
@@ -212,13 +223,18 @@ namespace InfluencerMatch.Infrastructure.Services
                     sentiment_note = sentimentModel.Note,
                     emotion_status = emotionResult.Succeeded ? "ok" : (emotionResult.Note ?? "unknown"),
                     emotion_evaluated_comments = emotionResult.EvaluatedCount,
-                    ner_entities_detected = nerEntities.Count
+                    ner_entities_detected = nerEntities.Count,
+                    groq_video_summary_status = string.IsNullOrWhiteSpace(aiVideoSummary)
+                        ? (!string.IsNullOrWhiteSpace(_groqApiKey) ? "empty_output" : "token_missing")
+                        : "ok"
                 }
             };
 
             // ── NLP primitives (used by both comment intelligence & recommendations) ──
             var nlpSentiment = !sentimentModel.Succeeded
-                ? (sentimentModel.Status == "insufficient_sample" ? "insufficient" : "model_unavailable")
+                ? (sentimentModel.Status == "insufficient_sample" ? "insufficient"
+                    : sentimentModel.Status == "token_missing" ? "token_missing"
+                    : "model_unavailable")
                 : sentimentModel.PositiveCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 60 ? "positive"
                     : sentimentModel.NegativeCount * 100.0 / Math.Max(1, sentimentModel.EvaluatedCount) >= 40 ? "negative"
                     : "mixed";
@@ -392,6 +408,30 @@ namespace InfluencerMatch.Infrastructure.Services
                 {
                     evidence.Add($"tag: '{Trim(tag, 20)}'");
                 }
+
+                if (!string.IsNullOrWhiteSpace(tag)
+                    && !tag.StartsWith("#", StringComparison.OrdinalIgnoreCase)
+                    && tag.Length >= 3
+                    && tag.Any(char.IsLetter))
+                {
+                    var normalizedTag = tag.Trim();
+                    brands.Add(normalizedTag);
+                    evidence.Add($"tag_brand: '{Trim(normalizedTag, 10)}'");
+                }
+            }
+
+            var explicitBrand = Regex.Match(
+                description ?? string.Empty,
+                @"(?:brand\s+mention|sponsored\s+by|partnered\s+with|in\s+collaboration\s+with)\s*:\s*([A-Za-z0-9&\-\.\s]{2,50})",
+                RegexOptions.IgnoreCase);
+            if (explicitBrand.Success)
+            {
+                var brand = explicitBrand.Groups[1].Value.Trim();
+                if (!string.IsNullOrWhiteSpace(brand))
+                {
+                    brands.Add(brand);
+                    evidence.Add($"explicit_brand_mention: '{Trim(brand, 10)}'");
+                }
             }
 
             var topCommentText = string.Join(" ", comments.Take(10).Select(c => c.TextOriginal ?? string.Empty)).ToLowerInvariant();
@@ -402,20 +442,26 @@ namespace InfluencerMatch.Infrastructure.Services
 
             var confirmed = evidence.Any(e => e.Contains("keyword:"));
             var likely = evidence.Count >= 2;
+            var weakBrandSignal = evidence.Any(e => e.StartsWith("tag_brand:", StringComparison.OrdinalIgnoreCase)
+                || e.StartsWith("explicit_brand_mention:", StringComparison.OrdinalIgnoreCase));
 
             var status = confirmed
                 ? "Confirmed"
                 : likely
                     ? "Likely"
+                    : weakBrandSignal
+                        ? "Unclear"
                     : evidence.Count == 1
                         ? "Unclear"
                         : "No evidence";
 
-            var confidence = confirmed ? 85 : likely ? 65 : evidence.Count == 1 ? 40 : 15;
+            var confidence = confirmed ? 85 : likely ? 65 : weakBrandSignal ? 45 : evidence.Count == 1 ? 40 : 15;
             var reason = confirmed
                 ? "Explicit sponsorship/disclosure phrases found in metadata."
                 : likely
                     ? "Multiple affiliate/CTA/link patterns found, but no explicit paid-disclosure phrase."
+                    : weakBrandSignal
+                        ? "Brand mention signals were found (tags/metadata), but no explicit disclosure or strong CTA pattern was detected."
                     : evidence.Count == 1
                         ? "Single weak signal found; uncertain without stronger disclosure evidence."
                         : "No sponsorship keywords, affiliate patterns, or brand CTA signals detected.";
@@ -609,6 +655,19 @@ namespace InfluencerMatch.Infrastructure.Services
         private async Task<SentimentModelAggregate> AnalyzeSentimentWithModelAsync(List<string> texts, int maxSamples)
         {
             var source = $"huggingface:{_hfModel}";
+            if (string.IsNullOrWhiteSpace(_hfApiToken))
+            {
+                return new SentimentModelAggregate(
+                    false,
+                    source,
+                    "token_missing",
+                    0,
+                    0,
+                    0,
+                    0,
+                    "HuggingFace token is missing on the deployed backend. Set HuggingFace__ApiToken (or HF_TOKEN) in environment.");
+            }
+
             if (texts == null || texts.Count == 0)
             {
                 return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No comments to evaluate.");
@@ -1225,6 +1284,10 @@ namespace InfluencerMatch.Infrastructure.Services
                     forCreator.Add("Sentiment model could not score part of this comment set — review the sentiment note and rerun if provider throttling persists.");
                     forBrands.Add("Sentiment model was temporarily unavailable or partially rejected comments — avoid using sentiment alone for approval until rerun succeeds.");
                     break;
+                case "token_missing":
+                    forCreator.Add("Sentiment model is not running because HuggingFace API token is missing in deployment configuration — set token and rerun analysis.");
+                    forBrands.Add("Model-based sentiment is unavailable due to missing backend model credentials — pause sentiment-dependent approval until token is configured.");
+                    break;
                 default:
                     forCreator.Add("Comment sample too small for reliable sentiment — enable comment auto-fetch (500+) to unlock accurate NLP scoring.");
                     forBrands.Add("Insufficient comment data to assess audience sentiment — request a creator-side analytics report.");
@@ -1334,15 +1397,18 @@ namespace InfluencerMatch.Infrastructure.Services
             var raw = await _groqService.GenerateTextAsync(system, user, 260);
             if (string.IsNullOrWhiteSpace(raw))
             {
+                var groqMissing = string.IsNullOrWhiteSpace(_groqApiKey);
                 return new
                 {
-                    final_verdict = "Insufficient LLM output; rely on deterministic analytics snapshot and rerun with full model connectivity.",
+                    final_verdict = groqMissing
+                        ? "LLM verdict unavailable because Groq API key is missing on deployed backend. Configure GROQ_API_KEY and rerun."
+                        : "Insufficient LLM output; rely on deterministic analytics snapshot and rerun with full model connectivity.",
                     brand_readiness_score = heuristicScore,
                     confidence = "low",
                     go_no_go = heuristicScore >= 70 ? "conditional_go" : "no_go",
                     recommended_format = "Integrated mention with explicit disclosure and one CTA.",
                     top_reasons = BuildDefaultReasons(views, sentiment, collaborationStatus),
-                    source = "heuristic_no_llm"
+                    source = groqMissing ? "heuristic_no_llm_token_missing" : "heuristic_no_llm"
                 };
             }
 
