@@ -20,78 +20,7 @@ namespace InfluencerMatch.API.Middleware
 
         public async Task InvokeAsync(HttpContext context, ISubscriptionAccessService accessService)
         {
-            // Testing/development mode: do not block feature usage behind subscription gates.
-            if (_env.IsDevelopment())
-            {
-                await _next(context);
-                return;
-            }
-
-            var pathRule = ResolvePathRule(context.Request.Path);
-            if (pathRule == null)
-            {
-                await _next(context);
-                return;
-            }
-
-            if (context.User.Identity?.IsAuthenticated != true)
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Authentication required." });
-                return;
-            }
-
-            var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out var userId))
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Invalid user context." });
-                return;
-            }
-
-            if (pathRule == "creator_search")
-            {
-                var access = await accessService.ValidateCreatorSearchAccessAsync(userId);
-                if (!access.Allowed)
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsJsonAsync(new
-                    {
-                        error = access.Reason,
-                        remainingSearches = access.RemainingSearches,
-                        requiredPlan = access.RequiredPlan,
-                        currentPlan = access.CurrentPlan,
-                        errorCode = access.ErrorCode,
-                        upgradePath = "/plans"
-                    });
-                    return;
-                }
-
-                await _next(context);
-
-                if (context.Response.StatusCode < 400)
-                {
-                    await accessService.RecordCreatorSearchUsageAsync(userId);
-                }
-
-                return;
-            }
-
-            var featureAccess = await accessService.ValidateFeatureAccessAsync(userId, pathRule);
-            if (!featureAccess.Allowed)
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new
-                {
-                    error = featureAccess.Reason,
-                    requiredPlan = featureAccess.RequiredPlan,
-                    currentPlan = featureAccess.CurrentPlan,
-                    errorCode = featureAccess.ErrorCode,
-                    upgradePath = "/plans"
-                });
-                return;
-            }
-
+            // Subscription gates disabled — all authenticated users have unrestricted access.
             await _next(context);
         }
 
