@@ -76,6 +76,7 @@ const routes = [
 
   // ── Brand discovery / analytics ────────────────────────────────────────
   { path: '/brand/youtube-creators', component: () => import('../views/BrandYouTubeCreatorsView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
+  { path: '/youtube/search-intelligence', component: () => import('../views/YouTubeSearchIntelligenceView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager', 'Creator'] } },
   { path: '/discovery',            component: () => import('../views/CreatorDiscovery.vue'),    meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/creators/search',      component: () => import('../views/CreatorSearch.vue'),       meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/creator/:id/analytics',       component: () => import('../views/CreatorAnalyticsView.vue'),  meta: { requiresAuth: true } },

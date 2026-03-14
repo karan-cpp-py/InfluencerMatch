@@ -20,7 +20,7 @@ namespace InfluencerMatch.Infrastructure.Services
         {
             if (storedRate.HasValue && storedRate.Value > 0)
             {
-                return Clamp(storedRate.Value);
+                return Clamp(NormalizeStoredRate(storedRate.Value));
             }
 
             var avgViews = averageViews ?? (videoCount > 0 ? totalViews / (double)videoCount : 0d);
@@ -50,6 +50,18 @@ namespace InfluencerMatch.Infrastructure.Services
             }
 
             return Math.Clamp(rate, MinRate, MaxRate);
+        }
+
+        private static double NormalizeStoredRate(double rate)
+        {
+            if (!double.IsFinite(rate) || rate <= 0)
+            {
+                return DefaultRate;
+            }
+
+            // Some tables store engagement as percent points (e.g. 4.25 for 4.25%),
+            // while downstream APIs expect a ratio (0.0425). Normalize before clamping.
+            return rate > 1 ? rate / 100.0 : rate;
         }
     }
 }

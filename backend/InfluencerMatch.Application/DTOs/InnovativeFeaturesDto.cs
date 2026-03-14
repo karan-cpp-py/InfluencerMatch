@@ -42,6 +42,14 @@ namespace InfluencerMatch.Application.DTOs
         public double  OpportunityScore { get; set; }    // composite recommendation score
         public string  GrowthCategory   { get; set; } = string.Empty;
         public double  EstimatedPrice   { get; set; }
+        public int     AudienceFitScore { get; set; }
+        public string  AiFitNarrative   { get; set; } = string.Empty;
+        public string  SuggestedActivation { get; set; } = string.Empty;
+        public string  RiskNote         { get; set; } = string.Empty;
+        public List<string> AiFitSignals { get; set; } = new();
+        public string  AiReadinessLevel { get; set; } = string.Empty;
+        public string  AiRecommendedCampaignGoal { get; set; } = string.Empty;
+        public int     AiRiskScore { get; set; }
     }
 
     // ── Feature 3: Campaign Performance Prediction ────────────────────────────

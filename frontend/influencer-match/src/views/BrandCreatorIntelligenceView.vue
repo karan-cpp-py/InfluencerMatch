@@ -137,6 +137,18 @@
                   <button class="btn btn-link btn-sm text-decoration-none p-0 fw-semibold" @click="selectCreator(creator)">
                     {{ creator.channelName }}
                   </button>
+                  <div class="ai-compact-row mt-1" v-if="creator.aiReadinessLevel || creator.aiRecommendedCampaignGoal || Number.isFinite(Number(creator.aiRiskScore)) || creator.aiFitNarrative">
+                    <span v-if="creator.aiReadinessLevel" class="badge" :class="readinessBadgeClass(creator.aiReadinessLevel)">
+                      {{ creator.aiReadinessLevel }}
+                    </span>
+                    <span v-if="creator.aiRecommendedCampaignGoal" class="badge" :class="goalBadgeClass(creator.aiRecommendedCampaignGoal)">
+                      {{ creator.aiRecommendedCampaignGoal }}
+                    </span>
+                    <span v-if="Number.isFinite(Number(creator.aiRiskScore)) && Number(creator.aiRiskScore) > 0" class="badge" :class="riskBadgeClass(creator.aiRiskScore)">
+                      Risk {{ creator.aiRiskScore }}
+                    </span>
+                    <span v-if="compactAiWhy(creator)" class="ai-compact-why">{{ compactAiWhy(creator) }}</span>
+                  </div>
                 </td>
                 <td class="text-end">{{ Math.round((creator.opportunityScore || 0) * 100) }}%</td>
                 <td class="text-end">{{ compact(creator.subscribers) }}</td>
@@ -209,6 +221,25 @@
                         Est. Price
                       </div>
                     </div>
+                    <div v-if="creator.aiFitNarrative" class="small text-muted mt-2 shortlist-narrative">
+                      {{ creator.aiFitNarrative }}
+                    </div>
+                    <div v-if="creator.aiFitSignals?.length" class="d-flex flex-wrap gap-2 mt-2">
+                      <span v-for="signal in creator.aiFitSignals.slice(0, 3)" :key="`${creator.creatorId}-${signal}`" class="badge rounded-pill text-bg-light border">
+                        {{ signal }}
+                      </span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-2" v-if="creator.aiReadinessLevel || creator.aiRecommendedCampaignGoal || creator.aiRiskScore">
+                      <span v-if="creator.aiReadinessLevel" class="badge" :class="readinessBadgeClass(creator.aiReadinessLevel)">
+                        {{ creator.aiReadinessLevel }} readiness
+                      </span>
+                      <span v-if="creator.aiRecommendedCampaignGoal" class="badge" :class="goalBadgeClass(creator.aiRecommendedCampaignGoal)">
+                        Goal: {{ creator.aiRecommendedCampaignGoal }}
+                      </span>
+                      <span v-if="Number.isFinite(Number(creator.aiRiskScore)) && Number(creator.aiRiskScore) > 0" class="badge" :class="riskBadgeClass(creator.aiRiskScore)">
+                        Risk {{ creator.aiRiskScore }}/100
+                      </span>
+                    </div>
                     <div class="d-flex justify-content-end mt-2">
                       <button
                         class="btn btn-sm"
@@ -239,9 +270,10 @@
                 <div>
                   <div class="eyebrow">Selected Creator</div>
                   <h4 class="fw-bold mb-1">{{ selectedMatch.channelName }}</h4>
-                  <div class="text-muted small">{{ selectedMatch.category }} · {{ selectedMatch.country || '—' }} · Match score {{ Math.round((selectedMatch.opportunityScore || 0) * 100) }}%</div>
+                    <div class="text-muted small">{{ selectedMatch.category }} · {{ selectedMatch.country || '—' }} · Match score {{ Math.round((selectedMatch.opportunityScore || 0) * 100) }}%</div>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
+                    <span class="badge text-bg-light border align-self-start">Audience fit {{ audienceFitScoreLabel }}</span>
                   <router-link
                     v-if="selectedMatch.creatorId"
                     :to="`/creator/${selectedMatch.creatorId}/analytics`"
@@ -291,6 +323,29 @@
                       <div class="mini-value text-warning">₹{{ sponsorshipRangeLabel }}</div>
                     </article>
                   </div>
+                </div>
+
+                <div class="ai-fit-panel mb-3" v-if="selectedMatch?.aiFitNarrative">
+                  <div class="ai-fit-label">AI Fit Brief</div>
+                  <div class="fw-semibold mb-2">{{ selectedMatch.aiFitNarrative }}</div>
+                  <div class="d-flex flex-wrap gap-2 mb-2" v-if="selectedMatch?.aiReadinessLevel || selectedMatch?.aiRecommendedCampaignGoal || selectedMatch?.aiRiskScore">
+                    <span v-if="selectedMatch?.aiReadinessLevel" class="badge" :class="readinessBadgeClass(selectedMatch.aiReadinessLevel)">
+                      {{ selectedMatch.aiReadinessLevel }} readiness
+                    </span>
+                    <span v-if="selectedMatch?.aiRecommendedCampaignGoal" class="badge" :class="goalBadgeClass(selectedMatch.aiRecommendedCampaignGoal)">
+                      Recommended goal: {{ selectedMatch.aiRecommendedCampaignGoal }}
+                    </span>
+                    <span v-if="Number.isFinite(Number(selectedMatch?.aiRiskScore)) && Number(selectedMatch?.aiRiskScore) > 0" class="badge" :class="riskBadgeClass(selectedMatch.aiRiskScore)">
+                      Risk score: {{ selectedMatch.aiRiskScore }}/100
+                    </span>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 mb-2" v-if="selectedMatch.aiFitSignals?.length">
+                    <span v-for="signal in selectedMatch.aiFitSignals" :key="signal" class="badge rounded-pill text-bg-light border">
+                      {{ signal }}
+                    </span>
+                  </div>
+                  <div class="small text-muted mb-1"><strong class="text-dark">Suggested activation:</strong> {{ selectedMatch.suggestedActivation }}</div>
+                  <div class="small text-muted"><strong class="text-dark">Watchout:</strong> {{ selectedMatch.riskNote }}</div>
                 </div>
 
                 <div class="row g-3 mb-3">
@@ -451,7 +506,10 @@ const avgInrPriceLabel = computed(() => {
 
 const risingCount = computed(() => shortlistedMatches.value.filter((creator) => creator.growthCategory === 'Rising').length);
 
-const detailData = computed(() => detail.value || selectedMatch.value || {});
+const detailData = computed(() => ({
+  ...(selectedMatch.value || {}),
+  ...(detail.value || {})
+}));
 
 const detailEngagementInfo = computed(() => engagementMeta(detailData.value?.engagementRate, {
   mode: 'ratio',
@@ -468,6 +526,11 @@ const sponsorshipRangeLabel = computed(() => formatInrRange(
 
 const audienceEstimate = computed(() => resolveAudienceDemographics(detailData.value));
 const audienceRisk = computed(() => estimateAudienceRisk(detailData.value));
+const audienceFitScoreLabel = computed(() => {
+  const score = Number(selectedMatch.value?.audienceFitScore || 0);
+  if (!Number.isFinite(score) || score <= 0) return '—';
+  return `${score}/100`;
+});
 
 const extractedTopics = computed(() => {
   const titles = (detailData.value?.recentVideos || []).map((video) => video.title || '').join(' ');
@@ -657,6 +720,50 @@ function growthBadgeClass(category) {
   if (category === 'Rising') return 'text-bg-success';
   if (category === 'Declining') return 'text-bg-danger';
   return 'text-bg-primary';
+}
+
+function readinessBadgeClass(level) {
+  const normalized = String(level || '').toLowerCase();
+  if (normalized === 'high') return 'text-bg-success';
+  if (normalized === 'medium') return 'text-bg-info';
+  return 'text-bg-secondary';
+}
+
+function goalBadgeClass(goal) {
+  const normalized = String(goal || '').toLowerCase();
+  if (normalized.includes('performance') || normalized.includes('conversion')) {
+    return 'text-bg-primary';
+  }
+  if (normalized.includes('consideration')) {
+    return 'text-bg-info';
+  }
+  if (normalized.includes('awareness')) {
+    return 'text-bg-light border';
+  }
+  return 'text-bg-light border';
+}
+
+function riskBadgeClass(scoreValue) {
+  const score = Number(scoreValue || 0);
+  if (!Number.isFinite(score) || score <= 0) return 'text-bg-light border';
+  if (score <= 40) return 'text-bg-danger';
+  if (score <= 65) return 'text-bg-warning';
+  return 'text-bg-success';
+}
+
+function compactAiWhy(creator) {
+  if (!creator) return '';
+  const firstSignal = Array.isArray(creator.aiFitSignals) && creator.aiFitSignals.length
+    ? String(creator.aiFitSignals[0] || '').trim()
+    : '';
+  if (firstSignal) return firstSignal;
+
+  const narrative = String(creator.aiFitNarrative || '').trim();
+  if (!narrative) return '';
+
+  const sentence = narrative.split(/[.!?]/)[0]?.trim() || '';
+  if (!sentence) return '';
+  return sentence.length > 68 ? `${sentence.slice(0, 65)}...` : sentence;
 }
 
 function formatCompactInr(value) {
@@ -881,6 +988,44 @@ function estimateAudienceRisk(creator) {
   border-radius: 12px;
   background: #fff;
   border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.shortlist-narrative {
+  line-height: 1.4;
+}
+
+.ai-fit-panel {
+  border-radius: 16px;
+  padding: 1rem;
+  background: linear-gradient(180deg, #ecfeff 0%, #f8fafc 100%);
+  border: 1px solid rgba(14, 165, 233, 0.18);
+}
+
+.ai-fit-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #0f766e;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.ai-compact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.ai-compact-row .badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.ai-compact-why {
+  font-size: 0.7rem;
+  color: #64748b;
+  line-height: 1.2;
 }
 
 @media (max-width: 991.98px) {

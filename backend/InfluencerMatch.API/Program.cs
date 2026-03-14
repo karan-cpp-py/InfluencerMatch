@@ -85,6 +85,7 @@ builder.Services.AddScoped<IAdvancedAnalyticsService,    InfluencerMatch.Infrast
 // AI / NLP / LLM services (free-tier external APIs — degrade gracefully when keys absent)
 builder.Services.AddScoped<IHuggingFaceNlpService, InfluencerMatch.Infrastructure.Services.HuggingFaceNlpService>();
 builder.Services.AddScoped<IGroqLlmService,        InfluencerMatch.Infrastructure.Services.GroqLlmService>();
+builder.Services.AddScoped<IYouTubeSearchIntelligenceService, InfluencerMatch.Infrastructure.Services.YouTubeSearchIntelligenceService>();
 // AddHostedService<CreatorStatsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 // AddHostedService<VideoMetricsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 

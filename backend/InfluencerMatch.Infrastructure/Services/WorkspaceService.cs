@@ -31,14 +31,24 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<WorkspaceDto?> GetWorkspaceForUserAsync(int userId)
         {
-            var workspace = await _db.WorkspaceMembers
+            var workspaceId = await _db.WorkspaceMembers
                 .AsNoTracking()
                 .Where(m => m.UserId == userId)
-                .Select(m => m.Workspace)
-                .Include(w => w.Members).ThenInclude(m => m.User)
-                .Include(w => w.Invites.Where(i => i.Status == "Pending"))
-                .Include(w => w.AuditLogs.OrderByDescending(a => a.CreatedAt).Take(25)).ThenInclude(a => a.ActorUser)
+                .Select(m => (int?)m.WorkspaceId)
                 .FirstOrDefaultAsync();
+
+            if (!workspaceId.HasValue)
+            {
+                return null;
+            }
+
+            var workspace = await _db.Workspaces
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(w => w.Members).ThenInclude(m => m.User)
+                .Include(w => w.Invites)
+                .Include(w => w.AuditLogs).ThenInclude(a => a.ActorUser)
+                .FirstOrDefaultAsync(w => w.WorkspaceId == workspaceId.Value);
 
             if (workspace == null)
             {
@@ -382,11 +392,13 @@ namespace InfluencerMatch.Infrastructure.Services
                         JoinedAt = m.JoinedAt
                     }).ToList(),
                 Invites = workspace.Invites
+                    .Where(i => i.Status == "Pending" && i.ExpiresAt > DateTime.UtcNow)
                     .OrderByDescending(i => i.CreatedAt)
                     .Select(i => MapInvite(i))
                     .ToList(),
                 AuditLogs = workspace.AuditLogs
                     .OrderByDescending(a => a.CreatedAt)
+                    .Take(25)
                     .Select(a => new WorkspaceAuditLogDto
                     {
                         WorkspaceAuditLogId = a.WorkspaceAuditLogId,

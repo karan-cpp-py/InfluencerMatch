@@ -50,6 +50,9 @@
           <li v-if="token && role === 'Creator'" class="nav-item">
             <router-link class="nav-link" to="/creator/latest-video-analysis">Video Analysis</router-link>
           </li>
+          <li v-if="token && role === 'Creator'" class="nav-item">
+            <router-link class="nav-link" to="/youtube/search-intelligence">Competitor Search</router-link>
+          </li>
 
           <!-- SuperAdmin links -->
           <li v-if="token && role === 'SuperAdmin'" class="nav-item">
@@ -89,6 +92,7 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
                 <li><router-link class="dropdown-item" to="/brand/youtube-creators">📺 YouTube Catalogue</router-link></li>
+                <li><router-link class="dropdown-item" to="/youtube/search-intelligence">🎯 YouTube Search Intelligence</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/search">🔎 Creator Search</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/rising">🚀 Rising Creators</router-link></li>
                 <li><router-link class="dropdown-item" to="/videos/trending">🔥 Trending Videos</router-link></li>

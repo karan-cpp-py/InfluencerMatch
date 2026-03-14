@@ -77,6 +77,20 @@
           <span>You have not linked a YouTube channel yet. Link one below to appear in Brand Marketplace discovery.</span>
         </div>
 
+        <div class="card border-0 shadow-sm section-card mb-4 competitor-card">
+          <div class="card-body p-4 d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+            <div>
+              <h5 class="fw-semibold mb-1">Competitor Search and Compare</h5>
+              <p class="text-muted mb-0">
+                Discover channels in your niche and compare performance signals to sharpen your content strategy.
+              </p>
+            </div>
+            <router-link to="/youtube/search-intelligence" class="btn btn-outline-primary fw-semibold">
+              Open Search Intelligence
+            </router-link>
+          </div>
+        </div>
+
         <div class="tab-strip mb-4" id="creatorTabs">
           <button class="tab-pill" :class="{ active: tab === 'profile' }" @click="tab = 'profile'">Profile</button>
           <button class="tab-pill" :class="{ active: tab === 'channel' }" @click="tab = 'channel'">Channel</button>
@@ -912,6 +926,11 @@ function fmtDate(d) {
   background: #f0f9ff;
   color: #0c4a6e;
   padding: 0.7rem 0.85rem;
+}
+
+.competitor-card {
+  border: 1px solid rgba(13, 110, 253, 0.2);
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.06), rgba(255, 255, 255, 0.96));
 }
 
 .tab-strip {
