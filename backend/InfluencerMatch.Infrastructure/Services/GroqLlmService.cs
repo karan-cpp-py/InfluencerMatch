@@ -38,10 +38,14 @@ namespace InfluencerMatch.Infrastructure.Services
         {
             _http   = http;
             _logger = logger;
-            _apiKey = config["Groq:ApiKey"]
-                   ?? config["Groq__ApiKey"]
-                   ?? config["GROQ_API_KEY"];
+            _apiKey = FirstNonEmpty(
+                config["Groq:ApiKey"],
+                config["Groq__ApiKey"],
+                config["GROQ_API_KEY"]);
         }
+
+        private static string? FirstNonEmpty(params string?[] values)
+            => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 
         // ── Core call ─────────────────────────────────────────────────────────
 

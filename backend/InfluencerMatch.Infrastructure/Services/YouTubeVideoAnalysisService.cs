@@ -112,10 +112,14 @@ namespace InfluencerMatch.Infrastructure.Services
                 ?? config["HUGGING_FACE_HUB_TOKEN"];
 
             _groqApiKey =
-                config["Groq:ApiKey"]
-                ?? config["Groq__ApiKey"]
-                ?? config["GROQ_API_KEY"];
+                FirstNonEmpty(
+                    config["Groq:ApiKey"],
+                    config["Groq__ApiKey"],
+                    config["GROQ_API_KEY"]);
         }
+
+        private static string? FirstNonEmpty(params string?[] values)
+            => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 
         public async Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
         {
