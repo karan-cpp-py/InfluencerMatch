@@ -231,25 +231,6 @@ namespace InfluencerMatch.Infrastructure.Services
             var commentIntelligence = BuildCommentIntelligence(normalizedComments, stats.CommentCount, commentFetchMeta, sentimentModel);
             var brandReadout = BuildBrandReadout(video, collaboration, commentIntelligence);
 
-            var videoSummary = new
-            {
-                summary = BuildSummary(title, description),
-                metadata = new
-                {
-                    publish_date = video.PublishedAt,
-                    tags,
-                    category_id = video.CategoryId,
-                    language = video.DefaultLanguage ?? video.DefaultAudioLanguage,
-                    duration = video.Duration
-                },
-                analysis_context = new
-                {
-                    creator_name = request.CreatorName,
-                    channel_id = request.ChannelId,
-                    analyzed_at_utc = today
-                }
-            };
-
             var missingDataChecklist = BuildMissingChecklist(video, request.ChannelContext, normalizedComments, request.TimeSeries);
 
             var recommendations = BuildRecommendations(
@@ -258,6 +239,18 @@ namespace InfluencerMatch.Infrastructure.Services
                 recLikeView, recCommentView,
                 nlpSentiment, nlpThemes, nlpHasQuestions, nlpProfanity,
                 commentTexts.Count, missingDataChecklist, video, request.ChannelContext);
+
+            var aiFinalVerdict = await BuildAiFinalVerdictAsync(
+                request.CreatorName ?? request.ChannelContext?.Title ?? "Creator",
+                title,
+                recViews,
+                recLikeView,
+                recCommentView,
+                recCollabStatus,
+                nlpSentiment,
+                nlpThemes,
+                nlpProfanity,
+                missingDataChecklist);
 
             var uiIdeas = new[]
             {
@@ -313,6 +306,7 @@ namespace InfluencerMatch.Infrastructure.Services
                     note               = emotionResult.Note
                 },
                 brand_agency_readout = brandReadout,
+                ai_final_verdict = aiFinalVerdict,
                 recommendations = recommendations,
                 missing_data_checklist = missingDataChecklist,
                 ui_widget_ideas = uiIdeas,
@@ -1270,6 +1264,227 @@ namespace InfluencerMatch.Infrastructure.Services
                 forBrands.Add("Provide channel baseline metrics and a comment sample to unlock detailed brand/agency recommendations.");
 
             return new { for_creator = forCreator, for_brands_agencies = forBrands };
+        }
+
+        private async Task<object> BuildAiFinalVerdictAsync(
+            string creatorName,
+            string videoTitle,
+            long? views,
+            double? likesPerView,
+            double? commentsPerView,
+            string collaborationStatus,
+            string sentiment,
+            List<string> topThemes,
+            bool profanityDetected,
+            List<string> missingData)
+        {
+            var heuristicScore = ComputeHeuristicReadinessScore(
+                views,
+                likesPerView,
+                commentsPerView,
+                collaborationStatus,
+                sentiment,
+                profanityDetected,
+                missingData.Count);
+
+            var themes = topThemes.Count == 0 ? "none" : string.Join(", ", topThemes.Take(4));
+
+            const string system =
+                "You are an influencer marketing due-diligence analyst. " +
+                "Return STRICT JSON only (no markdown, no prose) with keys: " +
+                "final_verdict (string), brand_readiness_score (integer 0-100), confidence (string: high|medium|low), " +
+                "go_no_go (string: go|conditional_go|no_go), recommended_format (string), top_reasons (array of 3 short strings).";
+
+            var user =
+                $"Creator: {creatorName}. " +
+                $"Video: {videoTitle}. " +
+                $"Views: {(views.HasValue ? views.Value.ToString("N0") : "unknown")}. " +
+                $"Likes/View: {(likesPerView.HasValue ? likesPerView.Value.ToString("P2") : "unknown")}. " +
+                $"Comments/View: {(commentsPerView.HasValue ? commentsPerView.Value.ToString("P2") : "unknown")}. " +
+                $"Collaboration status: {collaborationStatus}. " +
+                $"Comment sentiment: {sentiment}. " +
+                $"Top themes: {themes}. " +
+                $"Profanity detected: {(profanityDetected ? "yes" : "no")}. " +
+                $"Missing data count: {missingData.Count}. " +
+                $"Calibrated baseline score from deterministic model: {heuristicScore}. " +
+                "Keep the score realistic and aligned with evidence quality and data completeness.";
+
+            var raw = await _groqService.GenerateTextAsync(system, user, 260);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return new
+                {
+                    final_verdict = "Insufficient LLM output; rely on deterministic analytics snapshot and rerun with full model connectivity.",
+                    brand_readiness_score = heuristicScore,
+                    confidence = "low",
+                    go_no_go = heuristicScore >= 70 ? "conditional_go" : "no_go",
+                    recommended_format = "Integrated mention with explicit disclosure and one CTA.",
+                    top_reasons = BuildDefaultReasons(views, sentiment, collaborationStatus),
+                    source = "heuristic_no_llm"
+                };
+            }
+
+            try
+            {
+                var jsonPayload = ExtractJsonObject(raw);
+                using var doc = JsonDocument.Parse(jsonPayload);
+                var root = doc.RootElement;
+
+                var verdict = GetString(root, "final_verdict")
+                    ?? "Evidence indicates moderate sponsor readiness pending final verification checks.";
+                var score = GetInt(root, "brand_readiness_score") ?? heuristicScore;
+                score = Math.Clamp(score, 0, 100);
+                var confidence = (GetString(root, "confidence") ?? "medium").ToLowerInvariant();
+                var goNoGo = (GetString(root, "go_no_go") ?? (score >= 70 ? "go" : score >= 50 ? "conditional_go" : "no_go")).ToLowerInvariant();
+                var format = GetString(root, "recommended_format")
+                    ?? "Integrated mention with explicit disclosure and focused CTA.";
+                var reasons = GetStringArray(root, "top_reasons");
+                if (reasons.Count == 0)
+                    reasons = BuildDefaultReasons(views, sentiment, collaborationStatus);
+
+                return new
+                {
+                    final_verdict = verdict,
+                    brand_readiness_score = score,
+                    confidence,
+                    go_no_go = goNoGo,
+                    recommended_format = format,
+                    top_reasons = reasons.Take(3).ToList(),
+                    source = "groq:llama-3.1-8b-instant"
+                };
+            }
+            catch
+            {
+                return new
+                {
+                    final_verdict = "LLM response parsing failed; using deterministic sponsor-readiness estimate.",
+                    brand_readiness_score = heuristicScore,
+                    confidence = "medium",
+                    go_no_go = heuristicScore >= 70 ? "conditional_go" : "no_go",
+                    recommended_format = "Integrated mention with explicit disclosure and one CTA.",
+                    top_reasons = BuildDefaultReasons(views, sentiment, collaborationStatus),
+                    source = "heuristic_parse_recovery"
+                };
+            }
+        }
+
+        private static int ComputeHeuristicReadinessScore(
+            long? views,
+            double? likesPerView,
+            double? commentsPerView,
+            string collaborationStatus,
+            string sentiment,
+            bool profanityDetected,
+            int missingDataCount)
+        {
+            var score = 50;
+
+            if (views.HasValue)
+            {
+                if (views.Value >= 1_000_000) score += 16;
+                else if (views.Value >= 100_000) score += 10;
+                else if (views.Value >= 10_000) score += 5;
+                else score -= 4;
+            }
+            else
+            {
+                score -= 6;
+            }
+
+            if (likesPerView.HasValue)
+            {
+                if (likesPerView.Value >= 0.04) score += 8;
+                else if (likesPerView.Value >= 0.02) score += 4;
+                else if (likesPerView.Value < 0.01) score -= 6;
+            }
+
+            if (commentsPerView.HasValue)
+            {
+                if (commentsPerView.Value >= 0.005) score += 6;
+                else if (commentsPerView.Value < 0.001) score -= 5;
+            }
+
+            score += collaborationStatus switch
+            {
+                "Confirmed" => 8,
+                "Likely" => 4,
+                "Unclear" => 0,
+                _ => -2
+            };
+
+            score += sentiment switch
+            {
+                "positive" => 8,
+                "mixed" => 2,
+                "negative" => -10,
+                "model_unavailable" => -4,
+                _ => -2
+            };
+
+            if (profanityDetected) score -= 8;
+            score -= Math.Min(18, missingDataCount * 3);
+
+            return Math.Clamp(score, 0, 100);
+        }
+
+        private static List<string> BuildDefaultReasons(long? views, string sentiment, string collaborationStatus)
+        {
+            var reasons = new List<string>
+            {
+                views.HasValue && views.Value >= 100_000
+                    ? "Strong observed reach supports sponsor visibility objectives."
+                    : "Reach signal is moderate and needs campaign-fit validation.",
+                sentiment switch
+                {
+                    "positive" => "Audience sentiment trend is favorable for branded messaging.",
+                    "negative" => "Audience sentiment risk requires mitigation before campaign launch.",
+                    _ => "Audience sentiment signal is mixed or incomplete."
+                },
+                collaborationStatus switch
+                {
+                    "Confirmed" => "Disclosure-style collaboration patterns are already present.",
+                    "Likely" => "Affiliate/collab signals are present but disclosure clarity should improve.",
+                    _ => "Collaboration evidence is limited and should be validated with creator disclosures."
+                }
+            };
+
+            return reasons;
+        }
+
+        private static string ExtractJsonObject(string raw)
+        {
+            var start = raw.IndexOf('{');
+            var end = raw.LastIndexOf('}');
+            if (start >= 0 && end > start)
+                return raw[start..(end + 1)];
+            return raw;
+        }
+
+        private static string? GetString(JsonElement root, string prop)
+        {
+            return root.TryGetProperty(prop, out var el) && el.ValueKind == JsonValueKind.String
+                ? el.GetString()
+                : null;
+        }
+
+        private static int? GetInt(JsonElement root, string prop)
+        {
+            if (!root.TryGetProperty(prop, out var el)) return null;
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n)) return n;
+            if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out n)) return n;
+            return null;
+        }
+
+        private static List<string> GetStringArray(JsonElement root, string prop)
+        {
+            if (!root.TryGetProperty(prop, out var el) || el.ValueKind != JsonValueKind.Array)
+                return new List<string>();
+
+            return el.EnumerateArray()
+                .Where(x => x.ValueKind == JsonValueKind.String)
+                .Select(x => x.GetString() ?? string.Empty)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
         }
 
         private static string? TryHost(string url)
