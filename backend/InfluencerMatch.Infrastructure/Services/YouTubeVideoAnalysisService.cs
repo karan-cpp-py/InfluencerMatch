@@ -593,21 +593,22 @@ namespace InfluencerMatch.Infrastructure.Services
                 emotionCounts[dominantEmotion] += 1;
             }
 
-            var total = Math.Max(1, texts.Count);
+            var sentimentTotal = Math.Max(1, texts.Count);
+            var emotionTotal = Math.Max(1, texts.Count);
             if (sentimentModel.Succeeded)
             {
                 pos = sentimentModel.PositiveCount;
                 neg = sentimentModel.NegativeCount;
                 neutral = sentimentModel.NeutralCount;
-                total = Math.Max(1, sentimentModel.EvaluatedCount);
+                sentimentTotal = Math.Max(1, sentimentModel.EvaluatedCount);
             }
             else
             {
-                neutral = total;
+                neutral = sentimentTotal;
             }
 
-            var posPct = (int)Math.Round(pos * 100.0 / total);
-            var negPct = (int)Math.Round(neg * 100.0 / total);
+            var posPct = (int)Math.Round(pos * 100.0 / sentimentTotal);
+            var negPct = (int)Math.Round(neg * 100.0 / sentimentTotal);
             var mixedPct = Math.Max(0, 100 - posPct - negPct);
 
             var sentiment = sentimentModel.Succeeded
@@ -624,12 +625,12 @@ namespace InfluencerMatch.Infrastructure.Services
                 sentiment_breakdown = new { positive_pct = posPct, mixed_pct = mixedPct, negative_pct = negPct },
                 emotion_breakdown = new
                 {
-                    joy_pct = (int)Math.Round(emotionCounts["joy"] * 100.0 / total),
-                    anger_pct = (int)Math.Round(emotionCounts["anger"] * 100.0 / total),
-                    sadness_pct = (int)Math.Round(emotionCounts["sadness"] * 100.0 / total),
-                    fear_pct = (int)Math.Round(emotionCounts["fear"] * 100.0 / total),
-                    surprise_pct = (int)Math.Round(emotionCounts["surprise"] * 100.0 / total),
-                    neutral_pct = (int)Math.Round(emotionCounts["neutral"] * 100.0 / total),
+                    joy_pct = (int)Math.Round(emotionCounts["joy"] * 100.0 / emotionTotal),
+                    anger_pct = (int)Math.Round(emotionCounts["anger"] * 100.0 / emotionTotal),
+                    sadness_pct = (int)Math.Round(emotionCounts["sadness"] * 100.0 / emotionTotal),
+                    fear_pct = (int)Math.Round(emotionCounts["fear"] * 100.0 / emotionTotal),
+                    surprise_pct = (int)Math.Round(emotionCounts["surprise"] * 100.0 / emotionTotal),
+                    neutral_pct = (int)Math.Round(emotionCounts["neutral"] * 100.0 / emotionTotal),
                 },
                 top_5_themes = themes,
                 improvement_suggestions = new[]
