@@ -74,6 +74,21 @@
             </div>
           </div>
 
+          <div v-if="result.ai_model_diagnostics" class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h6 class="fw-semibold mb-2">AI Model Diagnostics</h6>
+              <div class="row g-2 small mb-2">
+                <div class="col-md-4"><strong>HF Token:</strong> {{ result.ai_model_diagnostics?.huggingface?.token_configured ? 'Configured' : 'Missing' }}</div>
+                <div class="col-md-4"><strong>Sentiment Status:</strong> {{ result.ai_model_diagnostics?.runtime?.sentiment_status || '—' }}</div>
+                <div class="col-md-4"><strong>Emotion Status:</strong> {{ result.ai_model_diagnostics?.runtime?.emotion_status || '—' }}</div>
+                <div class="col-md-4"><strong>Sentiment Evaluated:</strong> {{ fmtNum(result.ai_model_diagnostics?.runtime?.sentiment_evaluated_comments) }}</div>
+                <div class="col-md-4"><strong>Emotion Evaluated:</strong> {{ fmtNum(result.ai_model_diagnostics?.runtime?.emotion_evaluated_comments) }}</div>
+                <div class="col-md-4"><strong>NER Entities:</strong> {{ fmtNum(result.ai_model_diagnostics?.runtime?.ner_entities_detected) }}</div>
+              </div>
+              <pre class="small bg-light p-2 rounded mb-0">{{ toPretty(result.ai_model_diagnostics) }}</pre>
+            </div>
+          </div>
+
           <div class="card border-0 shadow-sm">
             <div class="card-body">
               <h6 class="fw-semibold mb-2">Video Summary</h6>

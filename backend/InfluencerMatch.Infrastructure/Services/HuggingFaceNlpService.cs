@@ -90,7 +90,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<List<float[]>> GetEmbeddingsBatchAsync(IList<string> texts)
         {
-            if (!IsConfigured() || texts.Count == 0) return new();
+            if (texts.Count == 0) return new();
             try
             {
                 var inputs = texts.Select(t => t.Length > 512 ? t[..512] : t).ToList();
@@ -113,7 +113,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<List<NerEntity>> RecognizeEntitiesAsync(string text)
         {
-            if (!IsConfigured() || string.IsNullOrWhiteSpace(text)) return new();
+            if (string.IsNullOrWhiteSpace(text)) return new();
             try
             {
                 var input = NormalizeForNer(text);
@@ -153,9 +153,6 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<EmotionDetectionResult> DetectEmotionsAsync(IEnumerable<string> texts)
         {
-            if (!IsConfigured())
-                return new EmotionDetectionResult(false, "neutral", new(), 0, "model_not_configured");
-
             var textList = texts
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .Select(t => t.Length > 256 ? t[..256] : t)
@@ -178,7 +175,13 @@ namespace InfluencerMatch.Infrastructure.Services
                 };
                 var response = await SendModelRequestAsync(client, _emotionModel, payload);
                 if (!response.IsSuccessStatusCode)
-                    return new EmotionDetectionResult(false, "neutral", new(), 0, "all_requests_failed");
+                {
+                    var status = (int)response.StatusCode;
+                    return new EmotionDetectionResult(false, "neutral", new(), 0,
+                        string.IsNullOrWhiteSpace(_apiToken)
+                            ? $"all_requests_failed_http_{status}_token_missing"
+                            : $"all_requests_failed_http_{status}");
+                }
 
                 var json = await response.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(json);
@@ -240,7 +243,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<ZeroShotResult> ClassifyZeroShotAsync(string text, string[] candidateLabels)
         {
-            if (!IsConfigured() || string.IsNullOrWhiteSpace(text) || candidateLabels.Length == 0)
+            if (string.IsNullOrWhiteSpace(text) || candidateLabels.Length == 0)
                 return new ZeroShotResult(false, "", new());
             try
             {
@@ -289,8 +292,6 @@ namespace InfluencerMatch.Infrastructure.Services
 
         // ── Helpers ────────────────────────────────────────────────────────────
 
-        private bool IsConfigured() => !string.IsNullOrWhiteSpace(_apiToken);
-
         private static string NormalizeBaseUrl(string value)
             => value.EndsWith("/", StringComparison.Ordinal) ? value : value + "/";
 
@@ -336,7 +337,8 @@ namespace InfluencerMatch.Infrastructure.Services
         private HttpClient BuildClient()
         {
             var client = _http.CreateClient("HuggingFaceNlp");
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+            if (!string.IsNullOrWhiteSpace(_apiToken))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
             client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             client.Timeout = TimeSpan.FromSeconds(45);

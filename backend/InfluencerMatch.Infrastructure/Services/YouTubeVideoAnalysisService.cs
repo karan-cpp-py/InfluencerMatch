@@ -195,6 +195,27 @@ namespace InfluencerMatch.Infrastructure.Services
                 .ToList();
             var aiVideoSummary = await _groqService.SummarizeVideoAsync(title, description);
 
+            var aiDiagnostics = new
+            {
+                huggingface = new
+                {
+                    token_configured = !string.IsNullOrWhiteSpace(_hfApiToken),
+                    inference_base_url = _hfInferenceBaseUrl,
+                    sentiment_model = _hfModel,
+                    ner_model = "Jean-Baptiste/roberta-large-ner-english",
+                    emotion_model = "j-hartmann/emotion-english-distilroberta-base"
+                },
+                runtime = new
+                {
+                    sentiment_status = sentimentModel.Status,
+                    sentiment_evaluated_comments = sentimentModel.EvaluatedCount,
+                    sentiment_note = sentimentModel.Note,
+                    emotion_status = emotionResult.Succeeded ? "ok" : (emotionResult.Note ?? "unknown"),
+                    emotion_evaluated_comments = emotionResult.EvaluatedCount,
+                    ner_entities_detected = nerEntities.Count
+                }
+            };
+
             // ── NLP primitives (used by both comment intelligence & recommendations) ──
             var nlpSentiment = !sentimentModel.Succeeded
                 ? (sentimentModel.Status == "insufficient_sample" ? "insufficient" : "model_unavailable")
@@ -305,6 +326,7 @@ namespace InfluencerMatch.Infrastructure.Services
                     evaluated_count    = emotionResult.EvaluatedCount,
                     note               = emotionResult.Note
                 },
+                ai_model_diagnostics = aiDiagnostics,
                 brand_agency_readout = brandReadout,
                 ai_final_verdict = aiFinalVerdict,
                 recommendations = recommendations,
