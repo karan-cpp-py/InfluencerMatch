@@ -872,6 +872,279 @@ namespace InfluencerMatch.API.Controllers
             };
         }
 
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpGet("creator-profiles")]
+        public async Task<IActionResult> GetCreatorProfiles(
+            [FromQuery] string? query,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 25)
+        {
+            page = page < 1 ? 1 : page;
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var q = _db.CreatorProfiles
+                .AsNoTracking()
+                .Include(p => p.User)
+                .Include(p => p.Channels)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                var term = query.Trim().ToLower();
+                q = q.Where(p =>
+                    (p.User.Name ?? string.Empty).ToLower().Contains(term) ||
+                    (p.User.Email ?? string.Empty).ToLower().Contains(term) ||
+                    (p.Category ?? string.Empty).ToLower().Contains(term) ||
+                    p.Channels.Any(c => (c.ChannelName ?? string.Empty).ToLower().Contains(term) || c.ChannelId.ToLower().Contains(term)));
+            }
+
+            var total = await q.CountAsync();
+            var rows = await q
+                .OrderByDescending(p => p.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new
+                {
+                    p.CreatorProfileId,
+                    p.UserId,
+                    UserName = p.User.Name,
+                    UserEmail = p.User.Email,
+                    p.User.Role,
+                    p.User.CustomerType,
+                    p.Country,
+                    p.Language,
+                    p.Category,
+                    Channel = p.Channels
+                        .OrderByDescending(c => c.LastStatsUpdatedAt ?? c.CreatedAt)
+                        .Select(c => new
+                        {
+                            c.ChannelId,
+                            c.ChannelName,
+                            c.Subscribers,
+                            c.EngagementRate,
+                            c.LastStatsUpdatedAt
+                        })
+                        .FirstOrDefault(),
+                    Creator = _db.Creators
+                        .Where(c => c.UserId == p.UserId)
+                        .Select(c => new { c.CreatorId, c.LastRefreshedAt })
+                        .FirstOrDefault(),
+                    Score = _db.CreatorScores
+                        .Where(s => s.Creator.UserId == p.UserId)
+                        .Select(s => (double?)s.Score)
+                        .FirstOrDefault()
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                page,
+                pageSize,
+                total,
+                items = rows.Select(r => new
+                {
+                    r.CreatorProfileId,
+                    r.UserId,
+                    r.UserName,
+                    r.UserEmail,
+                    r.Role,
+                    r.CustomerType,
+                    r.Country,
+                    r.Language,
+                    r.Category,
+                    channelId = r.Channel?.ChannelId,
+                    channelName = r.Channel?.ChannelName,
+                    subscribers = r.Channel?.Subscribers,
+                    engagementRate = r.Channel?.EngagementRate,
+                    channelLastUpdatedAt = r.Channel?.LastStatsUpdatedAt,
+                    creatorId = r.Creator?.CreatorId,
+                    creatorLastRefreshedAt = r.Creator?.LastRefreshedAt,
+                    aiScore = r.Score
+                })
+            });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpGet("creator-profiles/{creatorProfileId:int}")]
+        public async Task<IActionResult> GetCreatorProfileDetail(int creatorProfileId)
+        {
+            var profile = await _db.CreatorProfiles
+                .AsNoTracking()
+                .Include(p => p.User)
+                .Include(p => p.Channels)
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId);
+
+            if (profile == null)
+            {
+                return NotFound(new { error = "Creator profile not found." });
+            }
+
+            var channelIds = profile.Channels.Select(c => c.ChannelId).ToList();
+            var recentVideos = channelIds.Count == 0
+                ? new List<object>()
+                : await _db.ChannelVideos
+                    .AsNoTracking()
+                    .Where(v => channelIds.Contains(v.ChannelId))
+                    .OrderByDescending(v => v.PublishedAt)
+                    .Take(10)
+                    .Select(v => (object)new
+                    {
+                        v.YoutubeVideoId,
+                        v.Title,
+                        v.ThumbnailUrl,
+                        v.ViewCount,
+                        v.LikeCount,
+                        v.CommentCount,
+                        v.PublishedAt,
+                        v.ChannelId
+                    })
+                    .ToListAsync();
+
+            var creator = await _db.Creators
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == profile.UserId);
+
+            var aiScore = creator == null
+                ? null
+                : await _db.CreatorScores
+                    .AsNoTracking()
+                    .Where(s => s.CreatorId == creator.CreatorId)
+                    .Select(s => new { s.Score })
+                    .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                profile = new
+                {
+                    profile.CreatorProfileId,
+                    profile.UserId,
+                    userName = profile.User.Name,
+                    userEmail = profile.User.Email,
+                    role = profile.User.Role,
+                    customerType = profile.User.CustomerType,
+                    profile.Country,
+                    profile.Language,
+                    profile.Category,
+                    profile.InstagramHandle,
+                    profile.ContactEmail,
+                    profile.Bio,
+                    profile.CreatedAt
+                },
+                channels = profile.Channels.Select(c => new
+                {
+                    c.ChannelId,
+                    c.ChannelName,
+                    c.ChannelUrl,
+                    c.Subscribers,
+                    c.TotalViews,
+                    c.VideoCount,
+                    c.EngagementRate,
+                    c.LastStatsUpdatedAt
+                }),
+                creator = creator == null ? null : new
+                {
+                    creator.CreatorId,
+                    creator.ChannelId,
+                    creator.ChannelName,
+                    creator.ThumbnailUrl,
+                    creator.LastRefreshedAt
+                },
+                ai = aiScore,
+                recentVideos
+            });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpPut("creator-profiles/{creatorProfileId:int}")]
+        public async Task<IActionResult> UpdateCreatorProfileByAdmin(int creatorProfileId, [FromBody] AdminUpdateCreatorProfileDto dto)
+        {
+            var profile = await _db.CreatorProfiles
+                .Include(p => p.User)
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId);
+
+            if (profile == null)
+            {
+                return NotFound(new { error = "Creator profile not found." });
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.UserName)) profile.User.Name = dto.UserName.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.UserEmail)) profile.User.Email = dto.UserEmail.Trim().ToLowerInvariant();
+            if (dto.Country != null) profile.Country = dto.Country;
+            if (dto.Language != null) profile.Language = dto.Language;
+            if (dto.Category != null) profile.Category = dto.Category;
+            if (dto.InstagramHandle != null) profile.InstagramHandle = dto.InstagramHandle;
+            if (dto.ContactEmail != null) profile.ContactEmail = dto.ContactEmail;
+            if (dto.Bio != null) profile.Bio = dto.Bio;
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new { updated = true, profile.CreatorProfileId, profile.UserId, profile.User.Name, profile.User.Email });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpPost("creator-profiles/{creatorProfileId:int}/refresh-ai")]
+        public async Task<IActionResult> RefreshCreatorAiSignals(int creatorProfileId, CancellationToken ct)
+        {
+            var profile = await _db.CreatorProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId, ct);
+
+            if (profile == null)
+            {
+                return NotFound(new { error = "Creator profile not found." });
+            }
+
+            var creator = await _db.Creators
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == profile.UserId, ct);
+
+            if (creator == null)
+            {
+                return BadRequest(new { error = "Creator AI index row not found. Link/import channel first." });
+            }
+
+            await _analytics.RefreshAnalyticsAsync(creator.CreatorId);
+            await _videoAnalytics.RefreshCreatorAsync(creator.CreatorId, ct);
+
+            return Ok(new
+            {
+                refreshed = true,
+                creator.CreatorId,
+                creator.ChannelName,
+                timestamp = DateTime.UtcNow
+            });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpDelete("creator-profiles/{creatorProfileId:int}")]
+        public async Task<IActionResult> DeleteCreatorProfileByAdmin(int creatorProfileId)
+        {
+            var profile = await _db.CreatorProfiles
+                .Include(p => p.Channels)
+                .FirstOrDefaultAsync(p => p.CreatorProfileId == creatorProfileId);
+
+            if (profile == null)
+            {
+                return NotFound(new { error = "Creator profile not found." });
+            }
+
+            var creator = await _db.Creators.FirstOrDefaultAsync(c => c.UserId == profile.UserId);
+            if (creator != null)
+            {
+                _db.Creators.Remove(creator);
+            }
+
+            _db.CreatorProfiles.Remove(profile);
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                deleted = true,
+                creatorProfileId,
+                message = "Creator profile removed from creator workflows. User account remains for audit continuity."
+            });
+        }
+
         private int GetUserId()
             => int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
 
@@ -884,6 +1157,18 @@ namespace InfluencerMatch.API.Controllers
                 _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
             };
         }
+
+            public class AdminUpdateCreatorProfileDto
+            {
+                public string? UserName { get; set; }
+                public string? UserEmail { get; set; }
+                public string? Country { get; set; }
+                public string? Language { get; set; }
+                public string? Category { get; set; }
+                public string? InstagramHandle { get; set; }
+                public string? ContactEmail { get; set; }
+                public string? Bio { get; set; }
+            }
 
         // ── Jobs ──────────────────────────────────────────────────────────────
         // Each job is wrapped in a 3-minute hard timeout so a hung network call

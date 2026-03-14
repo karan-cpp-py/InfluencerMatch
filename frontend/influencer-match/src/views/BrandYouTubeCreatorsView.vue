@@ -301,9 +301,17 @@
                     <small class="text-muted">👍 {{ fmtNum(v.likeCount) }}</small>
                     <small class="text-success fw-semibold">{{ v.engagementRate?.toFixed(2) }}%</small>
                   </div>
+                  <div class="mt-2 d-flex gap-2">
+                    <router-link
+                      :to="`/creator/${detail.creator.creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
+                      class="btn btn-sm btn-outline-dark"
+                    >
+                      Analyze with AI
+                    </router-link>
+                    <a :href="'https://youtube.com/watch?v=' + v.videoId" target="_blank"
+                      class="btn btn-sm btn-outline-secondary">Watch</a>
+                  </div>
                 </div>
-                <a :href="'https://youtube.com/watch?v=' + v.videoId" target="_blank"
-                  class="btn btn-sm btn-outline-secondary ms-auto flex-shrink-0">▶</a>
               </div>
             </div>
           </div>

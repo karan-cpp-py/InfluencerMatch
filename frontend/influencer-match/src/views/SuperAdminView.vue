@@ -8,7 +8,10 @@
         <h2 class="fw-bold mb-1">SuperAdmin Control Panel</h2>
         <p class="mb-0 text-light-emphasis">Manually trigger YouTube jobs and monitor platform health in one place.</p>
       </div>
-      <button class="btn btn-light btn-sm fw-semibold" @click="refreshDashboard">Refresh Dashboard</button>
+      <div class="d-flex gap-2">
+        <router-link to="/admin/creators" class="btn btn-outline-light btn-sm fw-semibold">Manage Creators</router-link>
+        <button class="btn btn-light btn-sm fw-semibold" @click="refreshDashboard">Refresh Dashboard</button>
+      </div>
     </section>
 
     <!-- Setup card (shown when no admin exists yet) -->

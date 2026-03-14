@@ -123,6 +123,29 @@ function applyHumanError(error) {
   return error;
 }
 
+function shouldBroadcastUiError(error) {
+  const status = error?.response?.status;
+  if (!status) return true;
+  if (status === 401 || status === 403) return false; // handled by dedicated flows
+  return true;
+}
+
+function notifyUiError(error) {
+  if (typeof window === 'undefined') return;
+  if (!shouldBroadcastUiError(error)) return;
+
+  const status = error?.response?.status || 0;
+  window.dispatchEvent(new CustomEvent('api-error', {
+    detail: {
+      message: error?.userMessage || 'Something went wrong. Please try again.',
+      status,
+      endpoint: String(error?.config?.url || ''),
+      method: String(error?.config?.method || 'get').toUpperCase(),
+      at: Date.now(),
+    }
+  }));
+}
+
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -137,6 +160,7 @@ api.interceptors.response.use(
   response => response,
   async error => {
     applyHumanError(error);
+    notifyUiError(error);
 
     const originalRequest = error.config;
     const status = error?.response?.status;

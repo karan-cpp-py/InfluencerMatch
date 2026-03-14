@@ -7,7 +7,7 @@ namespace InfluencerMatch.Application.Interfaces
     {
         Task<AuthTokenResponseDto> RegisterAsync(UserRegisterDto dto, string? ipAddress = null);
         Task<AuthTokenResponseDto> LoginAsync(UserLoginDto dto, string? ipAddress = null);
-        Task<AuthTokenResponseDto> LoginWithGoogleAsync(string idToken, string? ipAddress = null);
+        Task<AuthTokenResponseDto> LoginWithGoogleAsync(string idToken, string? customerType = null, string? country = null, string? ipAddress = null);
         Task<bool> VerifyEmailAsync(string token);
         Task<string?> RequestPasswordResetAsync(string email);
         Task<bool> ResetPasswordAsync(string token, string newPassword);

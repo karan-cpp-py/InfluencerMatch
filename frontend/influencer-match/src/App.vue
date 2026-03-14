@@ -17,6 +17,14 @@
       </div>
     </div>
 
+    <div v-if="showApiErrorToast" class="api-error-toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="api-error-title">Action could not be completed</div>
+      <p class="mb-2">{{ apiErrorMessage }}</p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-light" @click="showApiErrorToast = false">Dismiss</button>
+      </div>
+    </div>
+
     <main class="app-main fade-up">
       <router-view />
     </main>
@@ -38,8 +46,11 @@ const showSessionExpired = ref(false);
 const showPlanLimitToast = ref(false);
 const planLimitMessage = ref('You have reached your plan limit. Upgrade to continue.');
 const upgradePath = ref('/plans');
+const showApiErrorToast = ref(false);
+const apiErrorMessage = ref('Something went wrong. Please try again.');
 let sessionRedirectTimer = null;
 let planLimitTimer = null;
+let apiErrorTimer = null;
 
 function onSessionExpired() {
   showSessionExpired.value = true;
@@ -80,19 +91,41 @@ function goToUpgrade() {
   router.push(upgradePath.value || '/plans');
 }
 
+function onApiError(event) {
+  const detail = event?.detail || {};
+  const msg = String(detail?.message || '').trim();
+  if (!msg) return;
+
+  apiErrorMessage.value = msg;
+  showApiErrorToast.value = true;
+
+  if (apiErrorTimer) {
+    clearTimeout(apiErrorTimer);
+  }
+
+  apiErrorTimer = setTimeout(() => {
+    showApiErrorToast.value = false;
+  }, 4500);
+}
+
 onMounted(() => {
   window.addEventListener('session-expired', onSessionExpired);
   window.addEventListener('plan-limit-reached', onPlanLimitReached);
+  window.addEventListener('api-error', onApiError);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('session-expired', onSessionExpired);
   window.removeEventListener('plan-limit-reached', onPlanLimitReached);
+  window.removeEventListener('api-error', onApiError);
   if (sessionRedirectTimer) {
     clearTimeout(sessionRedirectTimer);
   }
   if (planLimitTimer) {
     clearTimeout(planLimitTimer);
+  }
+  if (apiErrorTimer) {
+    clearTimeout(apiErrorTimer);
   }
 });
 </script>
@@ -134,6 +167,26 @@ onBeforeUnmount(() => {
 }
 
 .plan-limit-title {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.api-error-toast {
+  position: fixed;
+  right: 1rem;
+  top: 11.7rem;
+  z-index: 1080;
+  width: min(420px, calc(100vw - 2rem));
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: linear-gradient(135deg, #78350f, #b45309);
+  color: #ffedd5;
+  box-shadow: 0 14px 28px rgba(180, 83, 9, 0.35);
+  padding: 0.9rem;
+  animation: toast-in 0.22s ease both;
+}
+
+.api-error-title {
   font-weight: 700;
   margin-bottom: 0.2rem;
 }

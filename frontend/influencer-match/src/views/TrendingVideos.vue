@@ -159,7 +159,15 @@
 
           <!-- Card footer -->
           <div class="card-footer bg-transparent border-0 small text-muted pt-1 pb-2">
-            Scored {{ calcAgo(v.calculatedAt) }} &bull; {{ v.subscribers?.toLocaleString() }} subs
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span>Scored {{ calcAgo(v.calculatedAt) }} &bull; {{ v.subscribers?.toLocaleString() }} subs</span>
+              <router-link
+                :to="`/creator/${v.creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
+                class="btn btn-sm btn-outline-dark"
+              >
+                Analyze with AI
+              </router-link>
+            </div>
           </div>
         </div>
       </div>

@@ -38,7 +38,11 @@ namespace InfluencerMatch.API.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
-            var auth = await _authService.LoginWithGoogleAsync(dto.IdToken, HttpContext.Connection.RemoteIpAddress?.ToString());
+            var auth = await _authService.LoginWithGoogleAsync(
+                dto.IdToken,
+                dto.CustomerType,
+                dto.Country,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
             return Ok(auth);
         }
 

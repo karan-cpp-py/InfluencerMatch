@@ -9,6 +9,8 @@ namespace InfluencerMatch.Application.DTOs
     public class GoogleLoginDto
     {
         public string IdToken { get; set; } = string.Empty;
+        public string? CustomerType { get; set; }
+        public string? Country { get; set; }
     }
 
     public class EmailVerificationRequestDto

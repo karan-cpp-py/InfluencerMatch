@@ -98,7 +98,7 @@ namespace InfluencerMatch.Application.Services
             return await GenerateAuthTokensAsync(user, ipAddress);
         }
 
-        public async Task<AuthTokenResponseDto> LoginWithGoogleAsync(string idToken, string? ipAddress = null)
+        public async Task<AuthTokenResponseDto> LoginWithGoogleAsync(string idToken, string? customerType = null, string? country = null, string? ipAddress = null)
         {
             if (string.IsNullOrWhiteSpace(idToken))
                 throw new ApplicationException("Google ID token is required.");
@@ -110,14 +110,21 @@ namespace InfluencerMatch.Application.Services
             var user = await _userRepository.GetByEmailAsync(tokenInfo.Email);
             if (user == null)
             {
+                if (string.IsNullOrWhiteSpace(customerType))
+                {
+                    throw new ApplicationException("No account found for this Google email. Please sign up with Google first.");
+                }
+
+                var normalizedCustomerType = NormalizeCustomerType(customerType);
+                var role = ResolveRoleForCustomerType(normalizedCustomerType);
                 user = new User
                 {
                     Name = string.IsNullOrWhiteSpace(tokenInfo.Name) ? tokenInfo.Email.Split('@')[0] : tokenInfo.Name,
                     Email = tokenInfo.Email,
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
-                    Role = "Individual",
-                    CustomerType = "Individual",
-                    Country = "Unknown",
+                    Role = role,
+                    CustomerType = normalizedCustomerType,
+                    Country = string.IsNullOrWhiteSpace(country) ? "Unknown" : country.Trim(),
                     CreatedAt = DateTime.UtcNow,
                     EmailVerified = true,
                     TermsAcceptedAt = DateTime.UtcNow,
@@ -476,13 +483,7 @@ namespace InfluencerMatch.Application.Services
                 return dto.Role.Trim();
             }
 
-            return NormalizeCustomerType(dto.CustomerType) switch
-            {
-                "Brand" => "Brand",
-                "Agency" => "Agency",
-                "CreatorManager" => "CreatorManager",
-                _ => "Individual"
-            };
+            return ResolveRoleForCustomerType(NormalizeCustomerType(dto.CustomerType));
         }
 
         private static string NormalizeCustomerType(string? customerType)
@@ -498,10 +499,23 @@ namespace InfluencerMatch.Application.Services
                 "advertisingagencies" => "Agency",
                 "advertisingagency" => "Agency",
                 "agency" => "Agency",
+                "creator" => "Creator",
                 "individual" => "Individual",
                 "individualuser" => "Individual",
                 "creatormanager" => "CreatorManager",
                 "talentagency" => "CreatorManager",
+                _ => "Individual"
+            };
+        }
+
+        private static string ResolveRoleForCustomerType(string customerType)
+        {
+            return customerType switch
+            {
+                "Brand" => "Brand",
+                "Agency" => "Agency",
+                "Creator" => "Creator",
+                "CreatorManager" => "CreatorManager",
                 _ => "Individual"
             };
         }

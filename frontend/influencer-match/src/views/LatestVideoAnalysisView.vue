@@ -295,6 +295,8 @@ import { analyzeLatestVideo } from '../services/videoAnalysis';
 const route = useRoute();
 const creatorId = route.params.id;
 const isSelfMode = !creatorId;
+const selectedVideoId = ref(String(route.query.videoId || '').trim());
+const selectedVideoTitle = ref(String(route.query.videoTitle || '').trim());
 
 const inputJson = ref('');
 const inputError = ref('');
@@ -596,9 +598,16 @@ async function analyzeLatestAuto() {
 
       try {
         const { data: videoData } = await api.get(`/creators/${creatorId}/video-analytics`);
-        latestVideo = Array.isArray(videoData?.videos) && videoData.videos.length
-          ? videoData.videos[0]
-          : null;
+        if (Array.isArray(videoData?.videos) && videoData.videos.length) {
+          if (selectedVideoId.value) {
+            latestVideo = videoData.videos.find(v => String(v.youtubeVideoId || '') === selectedVideoId.value) || null;
+          }
+          if (!latestVideo) {
+            latestVideo = videoData.videos[0];
+          }
+        } else {
+          latestVideo = null;
+        }
       } catch (videoError) {
         if (isAuthError(videoError)) {
           throw videoError;
@@ -616,13 +625,13 @@ async function analyzeLatestAuto() {
     if (!latestVideo) {
       usedFallback = true;
       latestVideo = {
-        title: `Latest upload by ${creatorData?.channelName || 'creator'}`,
+        title: selectedVideoTitle.value || `Latest upload by ${creatorData?.channelName || 'creator'}`,
         brandName: null,
         publishedAt: new Date().toISOString(),
         views: creatorData?.averageViews ?? null,
         likes: null,
         comments: null,
-        youtubeVideoId: null
+        youtubeVideoId: selectedVideoId.value || null
       };
     }
 

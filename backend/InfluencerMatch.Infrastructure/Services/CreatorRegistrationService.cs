@@ -36,7 +36,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 Email        = dto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role         = "Creator",
-                CustomerType = "CreatorManager",
+                CustomerType = "Creator",
                 CompanyName  = null,
                 Country      = string.IsNullOrWhiteSpace(dto.Country) ? "Unknown" : dto.Country,
                 PhoneNumber  = null,

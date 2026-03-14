@@ -195,8 +195,7 @@
             <h6 class="fw-semibold mb-3">Top Videos</h6>
             <div v-if="data.topVideos && data.topVideos.length" class="row g-3">
               <div v-for="v in data.topVideos" :key="v.videoId" class="col-md-6 col-lg-4">
-                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank"
-                  class="card h-100 border-0 text-decoration-none text-dark hover-lift" style="box-shadow:0 1px 6px rgba(0,0,0,.08)">
+                <div class="card h-100 border-0 hover-lift" style="box-shadow:0 1px 6px rgba(0,0,0,.08)">
                   <img v-if="v.thumbnailUrl" :src="v.thumbnailUrl" class="card-img-top" style="object-fit:cover;height:140px" :alt="v.title" />
                   <div v-else class="bg-light d-flex align-items-center justify-content-center" style="height:140px;font-size:2rem">📹</div>
                   <div class="card-body p-2">
@@ -205,8 +204,17 @@
                       <span>👁 {{ compact(v.views) }}</span>
                       <span>👍 {{ compact(v.likes) }}</span>
                     </div>
+                    <div class="d-flex gap-2 mt-2">
+                      <router-link
+                        :to="`/creator/${creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
+                        class="btn btn-sm btn-outline-dark"
+                      >
+                        Analyze with AI
+                      </router-link>
+                      <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" class="btn btn-sm btn-outline-secondary">Watch</a>
+                    </div>
                   </div>
-                </a>
+                </div>
               </div>
             </div>
             <div v-else class="text-muted text-center py-4">Top video data requires YouTube Data API quota. Refresh analytics to populate.</div>

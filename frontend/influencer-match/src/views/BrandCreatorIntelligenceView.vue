@@ -424,6 +424,14 @@
                         <div v-for="video in detailData.recentVideos.slice(0, 4)" :key="video.youtubeVideoId" class="video-signal-row">
                           <div class="fw-semibold small text-truncate">{{ video.title }}</div>
                           <div class="small text-muted">{{ compact(video.viewCount) }} views · {{ formatDate(video.publishedAt) }}</div>
+                          <div class="mt-1">
+                            <router-link
+                              :to="`/creator/${selectedMatch.creatorId}/latest-video-analysis?videoId=${video.youtubeVideoId}&videoTitle=${encodeURIComponent(video.title || '')}`"
+                              class="btn btn-sm btn-outline-dark"
+                            >
+                              Analyze with AI
+                            </router-link>
+                          </div>
                         </div>
                       </div>
                       <div v-else class="small text-muted">No recent videos available for signal extraction.</div>
