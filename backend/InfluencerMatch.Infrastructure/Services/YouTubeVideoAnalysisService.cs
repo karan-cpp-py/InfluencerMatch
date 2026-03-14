@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
@@ -21,6 +23,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly ILogger<YouTubeVideoAnalysisService> _logger;
         private readonly string? _apiKey;
         private readonly string _hfModel;
+        private readonly string _hfInferenceBaseUrl;
         private readonly string? _hfApiToken;
         private readonly IHuggingFaceNlpService _nlpService;
         private readonly IGroqLlmService _groqService;
@@ -83,10 +86,18 @@ namespace InfluencerMatch.Infrastructure.Services
                 config["HuggingFace:Model"]
                 ?? config["HuggingFace__Model"]
                 ?? "cardiffnlp/twitter-roberta-base-sentiment-latest";
+            _hfInferenceBaseUrl = NormalizeBaseUrl(
+                config["HuggingFace:InferenceBaseUrl"]
+                ?? config["HuggingFace__InferenceBaseUrl"]
+                ?? config["HUGGINGFACE_INFERENCE_BASE_URL"]
+                ?? "https://api-inference.huggingface.co/models/");
             _hfApiToken =
                 config["HuggingFace:ApiToken"]
                 ?? config["HuggingFace__ApiToken"]
-                ?? config["HUGGINGFACE_API_TOKEN"];
+                ?? config["HUGGINGFACE_API_TOKEN"]
+                ?? config["HF_TOKEN"]
+                ?? config["HF_API_TOKEN"]
+                ?? config["HUGGING_FACE_HUB_TOKEN"];
         }
 
         public async Task<object> AnalyzeLatestVideoAsync(YouTubeVideoAnalysisRequestDto request)
@@ -264,10 +275,22 @@ namespace InfluencerMatch.Infrastructure.Services
             {
                 video_summary = new
                 {
-                    summary    = videoSummary.GetType().GetProperty("summary")?.GetValue(videoSummary),
+                    summary    = BuildSummary(title, description),
                     ai_summary = aiVideoSummary,
-                    metadata   = videoSummary.GetType().GetProperty("metadata")?.GetValue(videoSummary),
-                    analysis_context = videoSummary.GetType().GetProperty("analysis_context")?.GetValue(videoSummary)
+                    metadata = new
+                    {
+                        publish_date = video.PublishedAt,
+                        tags,
+                        category_id = video.CategoryId,
+                        language = video.DefaultLanguage ?? video.DefaultAudioLanguage,
+                        duration = video.Duration
+                    },
+                    analysis_context = new
+                    {
+                        creator_name = request.CreatorName,
+                        channel_id = request.ChannelId,
+                        analyzed_at_utc = today
+                    }
                 },
                 collaboration_detection = collaboration,
                 ner_analysis = new
@@ -579,7 +602,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .Select(NormalizeCommentForModel)
                 .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Take(Math.Max(1, maxSamples))
+                .Take(Math.Clamp(maxSamples, 1, 120))
                 .ToList();
             if (sample.Count == 0)
             {
@@ -593,14 +616,19 @@ namespace InfluencerMatch.Infrastructure.Services
                 {
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _hfApiToken);
                 }
+                http.DefaultRequestHeaders.Accept.Clear();
+                http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                http.Timeout = TimeSpan.FromSeconds(45);
 
                 int pos = 0, neg = 0, neutral = 0, failed = 0;
 
-                foreach (var text in sample)
+                const int batchSize = 12;
+                foreach (var batch in sample.Chunk(batchSize))
                 {
+                    var inputBatch = batch.ToArray();
                     var payload = JsonSerializer.Serialize(new
                     {
-                        inputs = text,
+                        inputs = inputBatch,
                         options = new
                         {
                             wait_for_model = true,
@@ -608,27 +636,38 @@ namespace InfluencerMatch.Infrastructure.Services
                         }
                     });
 
-                    using var req = new HttpRequestMessage(HttpMethod.Post, $"https://router.huggingface.co/hf-inference/models/{Uri.EscapeDataString(_hfModel)}")
+                    using var req = new HttpRequestMessage(HttpMethod.Post, _hfInferenceBaseUrl + Uri.EscapeDataString(_hfModel))
                     {
                         Content = new StringContent(payload, Encoding.UTF8, "application/json")
                     };
 
-                    using var res = await http.SendAsync(req);
+                    var res = await SendWithRetryAsync(http, req);
                     if (!res.IsSuccessStatusCode)
                     {
                         var body = await res.Content.ReadAsStringAsync();
                         _logger.LogWarning("HuggingFace sentiment call failed: {StatusCode} {Body}", (int)res.StatusCode, body);
-                        failed++;
+                        failed += inputBatch.Length;
+                        res.Dispose();
                         continue;
                     }
 
                     var json = await res.Content.ReadAsStringAsync();
-                    var label = ParseSentimentLabel(json);
-                    switch (label)
+                    res.Dispose();
+                    var labels = ParseSentimentLabels(json, inputBatch.Length);
+                    if (labels.Count == 0)
                     {
-                        case "positive": pos++; break;
-                        case "negative": neg++; break;
-                        default: neutral++; break;
+                        failed += inputBatch.Length;
+                        continue;
+                    }
+
+                    foreach (var label in labels)
+                    {
+                        switch (label)
+                        {
+                            case "positive": pos++; break;
+                            case "negative": neg++; break;
+                            default: neutral++; break;
+                        }
                     }
                 }
 
@@ -651,6 +690,46 @@ namespace InfluencerMatch.Infrastructure.Services
             }
         }
 
+        private static async Task<HttpResponseMessage> SendWithRetryAsync(HttpClient client, HttpRequestMessage template)
+        {
+            const int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                using var req = CloneRequest(template);
+                var res = await client.SendAsync(req);
+                if (res.IsSuccessStatusCode)
+                {
+                    return res;
+                }
+
+                if ((res.StatusCode == HttpStatusCode.TooManyRequests || res.StatusCode == HttpStatusCode.ServiceUnavailable)
+                    && attempt < maxAttempts)
+                {
+                    res.Dispose();
+                    await Task.Delay(500 * attempt);
+                    continue;
+                }
+
+                return res;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("Max retry attempts reached.")
+            };
+        }
+
+        private static HttpRequestMessage CloneRequest(HttpRequestMessage source)
+        {
+            var clone = new HttpRequestMessage(source.Method, source.RequestUri);
+            if (source.Content != null)
+            {
+                var body = source.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                clone.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            }
+            return clone;
+        }
+
         private static string NormalizeCommentForModel(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return string.Empty;
@@ -662,33 +741,58 @@ namespace InfluencerMatch.Infrastructure.Services
                 : normalized[..maxChars];
         }
 
-        private static string ParseSentimentLabel(string json)
+        private static List<string> ParseSentimentLabels(string json, int expectedCount)
         {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var results = new List<string>();
 
-            JsonElement entries;
-            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("value", out var valueProp) && valueProp.ValueKind == JsonValueKind.Array)
-            {
-                entries = valueProp;
-            }
-            else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
-            {
-                var first = root[0];
-                if (first.ValueKind == JsonValueKind.Array)
+                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
                 {
-                    entries = first;
-                }
-                else
-                {
-                    entries = root;
-                }
-            }
-            else
-            {
-                return "neutral";
-            }
+                    if (root[0].ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var arr in root.EnumerateArray())
+                            results.Add(ParseBestSentimentLabel(arr));
+                        return results;
+                    }
 
+                    if (root[0].ValueKind == JsonValueKind.Object)
+                    {
+                        if (root[0].TryGetProperty("label", out _))
+                        {
+                            results.Add(ParseBestSentimentLabel(root));
+                            return results;
+                        }
+
+                        foreach (var obj in root.EnumerateArray())
+                        {
+                            if (obj.ValueKind == JsonValueKind.Array)
+                                results.Add(ParseBestSentimentLabel(obj));
+                        }
+                        return results;
+                    }
+                }
+
+                if (root.ValueKind == JsonValueKind.Object
+                    && root.TryGetProperty("value", out var valueProp)
+                    && valueProp.ValueKind == JsonValueKind.Array)
+                {
+                    results.Add(ParseBestSentimentLabel(valueProp));
+                    return results;
+                }
+
+                return Enumerable.Repeat("neutral", Math.Max(0, expectedCount)).ToList();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        private static string ParseBestSentimentLabel(JsonElement entries)
+        {
             string bestLabel = "neutral";
             double bestScore = double.MinValue;
 
@@ -708,10 +812,13 @@ namespace InfluencerMatch.Infrastructure.Services
                 }
             }
 
-            if (bestLabel.Contains("positive") || bestLabel == "label_2") return "positive";
-            if (bestLabel.Contains("negative") || bestLabel == "label_0") return "negative";
+            if (bestLabel.Contains("positive") || bestLabel is "label_2" or "5 stars" or "4 stars") return "positive";
+            if (bestLabel.Contains("negative") || bestLabel is "label_0" or "1 star" or "2 stars") return "negative";
             return "neutral";
         }
+
+        private static string NormalizeBaseUrl(string value)
+            => value.EndsWith("/", StringComparison.Ordinal) ? value : value + "/";
 
         private static string DetectDominantEmotion(string text)
         {
