@@ -126,7 +126,6 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token');
-  const role  = localStorage.getItem('role');
 
   await ensurePlatformConfigLoaded();
 
@@ -134,19 +133,7 @@ router.beforeEach(async (to, from, next) => {
     return next('/login');
   }
 
-  if (to.meta.role) {
-    const allowedRoles = Array.isArray(to.meta.role) ? to.meta.role : [to.meta.role];
-    if (!allowedRoles.includes(role)) {
-      return next(homeRouteForRole(role, platformConfig.features));
-    }
-  }
-
-  if (to.meta.strategyFeature) {
-    const enabled = Boolean(platformConfig.features?.[to.meta.strategyFeature]);
-    if (!enabled) {
-      return next('/brand/waitlist');
-    }
-  }
+  // Role and plan/feature restrictions intentionally disabled — all pages are accessible to any logged-in user.
 
   next();
 });
