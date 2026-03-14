@@ -23,6 +23,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly ILogger<YouTubeVideoAnalysisService> _logger;
         private readonly string? _apiKey;
         private readonly string _hfModel;
+        private readonly List<string> _hfSentimentModels;
         private readonly string _hfInferenceBaseUrl;
         private readonly string? _hfApiToken;
         private readonly string? _groqApiKey;
@@ -87,6 +88,16 @@ namespace InfluencerMatch.Infrastructure.Services
                 config["HuggingFace:Model"]
                 ?? config["HuggingFace__Model"]
                 ?? "cardiffnlp/twitter-roberta-base-sentiment-latest";
+            _hfSentimentModels = new[]
+            {
+                _hfModel,
+                config["HuggingFace:SentimentFallbackModel1"] ?? config["HuggingFace__SentimentFallbackModel1"] ?? "distilbert-base-uncased-finetuned-sst-2-english",
+                config["HuggingFace:SentimentFallbackModel2"] ?? config["HuggingFace__SentimentFallbackModel2"] ?? "cardiffnlp/twitter-xlm-roberta-base-sentiment"
+            }
+            .Where(m => !string.IsNullOrWhiteSpace(m))
+            .Select(m => m.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
             _hfInferenceBaseUrl = NormalizeBaseUrl(
                 config["HuggingFace:InferenceBaseUrl"]
                 ?? config["HuggingFace__InferenceBaseUrl"]
@@ -246,7 +257,9 @@ namespace InfluencerMatch.Infrastructure.Services
             bool recConfirmedCollab = ConfirmedCollabKeywords.Any(k => allEvidenceText.Contains(k, StringComparison.OrdinalIgnoreCase));
             int recLikelySignals = LikelyCollabKeywords.Count(k => allEvidenceText.Contains(k, StringComparison.OrdinalIgnoreCase))
                 + (Regex.IsMatch(description, @"https?://", RegexOptions.IgnoreCase) ? 1 : 0)
-                + (tags.Any(t => t.StartsWith("#ad", StringComparison.OrdinalIgnoreCase) || t.StartsWith("#sponsored", StringComparison.OrdinalIgnoreCase)) ? 1 : 0);
+                + (tags.Any(t => t.StartsWith("#ad", StringComparison.OrdinalIgnoreCase) || t.StartsWith("#sponsored", StringComparison.OrdinalIgnoreCase)) ? 1 : 0)
+                + (tags.Any(t => !string.IsNullOrWhiteSpace(t) && !t.StartsWith("#", StringComparison.OrdinalIgnoreCase)) ? 1 : 0)
+                + (Regex.IsMatch(description, @"brand\s+mention\s*:\s*[A-Za-z0-9&\-\.\s]{2,50}", RegexOptions.IgnoreCase) ? 1 : 0);
             var recCollabStatus = recConfirmedCollab ? "Confirmed"
                 : recLikelySignals >= 2 ? "Likely"
                 : recLikelySignals == 1 ? "Unclear"
@@ -684,85 +697,116 @@ namespace InfluencerMatch.Infrastructure.Services
                 return new SentimentModelAggregate(false, source, "insufficient_sample", 0, 0, 0, 0, "No non-empty comments to evaluate.");
             }
 
-            try
+            var finalFailureStatus = "api_error";
+            string? finalFailureNote = null;
+
+            foreach (var modelName in _hfSentimentModels)
             {
-                var http = _http.CreateClient();
-                if (!string.IsNullOrWhiteSpace(_hfApiToken))
+                try
                 {
+                    var http = _http.CreateClient();
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _hfApiToken);
-                }
-                http.DefaultRequestHeaders.Accept.Clear();
-                http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                http.Timeout = TimeSpan.FromSeconds(45);
+                    http.DefaultRequestHeaders.Accept.Clear();
+                    http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    http.Timeout = TimeSpan.FromSeconds(45);
 
-                int pos = 0, neg = 0, neutral = 0, failed = 0;
+                    int pos = 0, neg = 0, neutral = 0, failed = 0;
+                    int? lastFailureStatus = null;
+                    string? lastFailureBody = null;
 
-                const int batchSize = 12;
-                foreach (var batch in sample.Chunk(batchSize))
-                {
-                    var inputBatch = batch.ToArray();
-                    var payload = JsonSerializer.Serialize(new
+                    const int batchSize = 12;
+                    foreach (var batch in sample.Chunk(batchSize))
                     {
-                        inputs = inputBatch,
-                        options = new
+                        var inputBatch = batch.ToArray();
+                        var payload = JsonSerializer.Serialize(new
                         {
-                            wait_for_model = true,
-                            use_cache = true
+                            inputs = inputBatch,
+                            options = new
+                            {
+                                wait_for_model = true,
+                                use_cache = true
+                            }
+                        });
+
+                        using var req = new HttpRequestMessage(HttpMethod.Post, _hfInferenceBaseUrl + Uri.EscapeDataString(modelName))
+                        {
+                            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                        };
+
+                        var res = await SendWithRetryAsync(http, req);
+                        if (!res.IsSuccessStatusCode)
+                        {
+                            var body = await res.Content.ReadAsStringAsync();
+                            lastFailureStatus = (int)res.StatusCode;
+                            lastFailureBody = body;
+                            _logger.LogWarning("HuggingFace sentiment call failed (model {Model}): {StatusCode} {Body}", modelName, (int)res.StatusCode, body);
+                            failed += inputBatch.Length;
+                            res.Dispose();
+                            continue;
                         }
-                    });
 
-                    using var req = new HttpRequestMessage(HttpMethod.Post, _hfInferenceBaseUrl + Uri.EscapeDataString(_hfModel))
-                    {
-                        Content = new StringContent(payload, Encoding.UTF8, "application/json")
-                    };
-
-                    var res = await SendWithRetryAsync(http, req);
-                    if (!res.IsSuccessStatusCode)
-                    {
-                        var body = await res.Content.ReadAsStringAsync();
-                        _logger.LogWarning("HuggingFace sentiment call failed: {StatusCode} {Body}", (int)res.StatusCode, body);
-                        failed += inputBatch.Length;
+                        var json = await res.Content.ReadAsStringAsync();
                         res.Dispose();
-                        continue;
-                    }
-
-                    var json = await res.Content.ReadAsStringAsync();
-                    res.Dispose();
-                    var labels = ParseSentimentLabels(json, inputBatch.Length);
-                    if (labels.Count == 0)
-                    {
-                        failed += inputBatch.Length;
-                        continue;
-                    }
-
-                    foreach (var label in labels)
-                    {
-                        switch (label)
+                        var labels = ParseSentimentLabels(json, inputBatch.Length);
+                        if (labels.Count == 0)
                         {
-                            case "positive": pos++; break;
-                            case "negative": neg++; break;
-                            default: neutral++; break;
+                            failed += inputBatch.Length;
+                            continue;
+                        }
+
+                        foreach (var label in labels)
+                        {
+                            switch (label)
+                            {
+                                case "positive": pos++; break;
+                                case "negative": neg++; break;
+                                default: neutral++; break;
+                            }
                         }
                     }
-                }
 
-                var succeededCount = pos + neg + neutral;
-                if (succeededCount == 0)
+                    var succeededCount = pos + neg + neutral;
+                    if (succeededCount > 0)
+                    {
+                        var note = failed > 0
+                            ? $"Model evaluated {succeededCount} comments successfully; skipped {failed} comments rejected by provider."
+                            : null;
+
+                        return new SentimentModelAggregate(
+                            true,
+                            $"huggingface:{modelName}",
+                            failed > 0 ? "partial_success" : "ok",
+                            succeededCount,
+                            pos,
+                            neutral,
+                            neg,
+                            note);
+                    }
+
+                    source = $"huggingface:{modelName}";
+                    var status = lastFailureStatus.HasValue ? $"api_error_http_{lastFailureStatus.Value}" : "api_error";
+                    var noteOnFail = !string.IsNullOrWhiteSpace(lastFailureBody)
+                        ? $"Model inference failed for all {sample.Count} comments. Last provider response: {Trim(lastFailureBody, 30)}"
+                        : $"Model inference failed for all {sample.Count} comments.";
+
+                    finalFailureStatus = status;
+                    finalFailureNote = noteOnFail;
+
+                    _logger.LogWarning("Sentiment model {Model} produced no successful outputs. Status={Status}", modelName, status);
+
+                    // Continue to next fallback model.
+                }
+                catch (Exception ex)
                 {
-                    return new SentimentModelAggregate(false, source, "api_error", 0, 0, 0, 0, $"Model inference failed for all {sample.Count} comments.");
+                    _logger.LogWarning(ex, "HuggingFace sentiment inference failed for model {Model}", modelName);
+                    source = $"huggingface:{modelName}";
+                    finalFailureStatus = "exception";
+                    finalFailureNote = $"Exception while evaluating model {modelName}.";
                 }
-
-                var note = failed > 0
-                    ? $"Model evaluated {succeededCount} comments successfully; skipped {failed} comments rejected by provider."
-                    : null;
-
-                return new SentimentModelAggregate(true, source, failed > 0 ? "partial_success" : "ok", succeededCount, pos, neutral, neg, note);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "HuggingFace sentiment inference failed for model {Model}", _hfModel);
-                return new SentimentModelAggregate(false, source, "exception", 0, 0, 0, 0, "Model inference request failed.");
-            }
+
+            return new SentimentModelAggregate(false, source, finalFailureStatus, 0, 0, 0, 0,
+                finalFailureNote ?? "All configured sentiment models failed on this deployment. Check model availability or account quotas.");
         }
 
         private static async Task<HttpResponseMessage> SendWithRetryAsync(HttpClient client, HttpRequestMessage template)
