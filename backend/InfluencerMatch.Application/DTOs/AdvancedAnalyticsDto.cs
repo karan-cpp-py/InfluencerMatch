@@ -62,6 +62,8 @@ namespace InfluencerMatch.Application.DTOs
         public List<ContentFormatPerformanceDto> ContentFormatPerformance { get; set; } = new();
         public List<string> RetentionProxySuggestions { get; set; } = new();
         public List<string> WeeklyActionList { get; set; } = new();
+        /// <summary>LLM-generated (Groq) coaching tips — null when Groq API key is absent.</summary>
+        public List<string>? AiInsights { get; set; }
     }
 
     public class CreatorInsightsDto

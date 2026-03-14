@@ -87,17 +87,20 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly IHttpClientFactory   _http;
         private readonly ILogger<VideoAnalyticsService> _log;
         private readonly string? _apiKey;
+        private readonly IHuggingFaceNlpService _nlpService;
 
         public VideoAnalyticsService(
             ApplicationDbContext db,
             IHttpClientFactory   http,
             ILogger<VideoAnalyticsService> log,
-            IConfiguration config)
+            IConfiguration config,
+            IHuggingFaceNlpService nlpService)
         {
-            _db     = db;
-            _http   = http;
-            _log    = log;
-            _apiKey = config["YouTube:ApiKey"];
+            _db         = db;
+            _http       = http;
+            _log        = log;
+            _apiKey     = config["YouTube:ApiKey"];
+            _nlpService = nlpService;
         }
 
         // ── Public API ────────────────────────────────────────────────────────
@@ -129,6 +132,20 @@ namespace InfluencerMatch.Infrastructure.Services
                     : 0.0;
 
                 var detection = DetectSponsorship(v.Title, v.Description);
+
+                // Augment with NER: if regex found no brand, try ML entity extraction
+                if (detection.BrandName == null)
+                {
+                    var nerInput = $"{v.Title} {v.Description}"[..Math.Min(($"{v.Title} {v.Description}").Length, 400)];
+                    var entities = await _nlpService.RecognizeEntitiesAsync(nerInput);
+                    var nerTop = entities
+                        .Where(e => e.EntityGroup is "ORG" or "MISC" && e.Score >= 0.80)
+                        .OrderByDescending(e => e.Score)
+                        .FirstOrDefault();
+                    if (nerTop != null)
+                        detection = new SponsorshipDetection(nerTop.Word, detection.ProductName, Math.Round(nerTop.Score, 3));
+                }
+
                 var videoType = detection.BrandName != null ? "Sponsored" : "Organic";
 
                 var existing = await _db.VideoAnalytics

@@ -15,5 +15,9 @@ namespace InfluencerMatch.Application.DTOs
         public double CompletionRate { get; set; }
         public int PreviousCampaignOutcomes { get; set; }
         public string TrustBand { get; set; } = "Developing";
+        /// <summary>Cosine similarity score between campaign and creator embeddings (0–1). Null when HuggingFace API is unavailable.</summary>
+        public double? SemanticSimilarity { get; set; }
+        /// <summary>LLM-generated one-sentence explanation of this match. Null when Groq API is unavailable.</summary>
+        public string? AiMatchExplanation { get; set; }
     }
 }

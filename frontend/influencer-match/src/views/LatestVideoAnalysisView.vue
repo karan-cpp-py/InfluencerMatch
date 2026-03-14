@@ -46,7 +46,11 @@
               <div v-if="autoMeta" class="small text-muted mb-2">
                 <strong>Auto source:</strong> {{ autoMeta.title || 'Latest row' }}
               </div>
-              <p class="mb-2">{{ result.video_summary?.summary || 'No summary available.' }}</p>
+              <!-- AI-generated summary (Groq) takes priority when available -->
+              <p v-if="result.video_summary?.ai_summary" class="mb-1 fw-semibold text-primary">
+                {{ result.video_summary.ai_summary }}
+              </p>
+              <p class="mb-2 text-muted small">{{ result.video_summary?.summary || 'No summary available.' }}</p>
               <div class="small text-muted">
                 <div><strong>Publish:</strong> {{ fmtDate(result.video_summary?.metadata?.publish_date) }}</div>
                 <div><strong>Duration:</strong> {{ result.video_summary?.metadata?.duration || '—' }}</div>
@@ -64,13 +68,69 @@
                 <span class="badge bg-primary">Confidence {{ result.collaboration_detection?.confidence_score ?? 0 }}/100</span>
               </div>
               <div class="small mb-2">{{ result.collaboration_detection?.confidence_reason || '—' }}</div>
-              <div class="small"><strong>Brands:</strong> {{ joinList(result.collaboration_detection?.brands_detected) }}</div>
+              <div class="small"><strong>Brands (regex):</strong> {{ joinList(result.collaboration_detection?.brands_detected) }}</div>
               <div class="mt-2">
                 <div class="small fw-semibold mb-1">Evidence</div>
                 <ul class="small mb-0 ps-3">
                   <li v-for="(e, i) in (result.collaboration_detection?.evidence || [])" :key="i">{{ e }}</li>
                 </ul>
               </div>
+            </div>
+          </div>
+
+          <!-- NER Analysis (ML-detected entities) -->
+          <div v-if="result.ner_analysis" class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h6 class="fw-semibold mb-2">
+                🤖 NER Entity Analysis
+                <span class="badge bg-secondary ms-1 fw-normal" style="font-size:0.65rem">{{ result.ner_analysis.model }}</span>
+              </h6>
+              <div class="row g-2 small">
+                <div class="col-md-6">
+                  <div class="fw-semibold mb-1 text-warning">Brands &amp; Orgs Detected</div>
+                  <span v-for="(b, i) in (result.ner_analysis.brands_and_orgs || [])" :key="i"
+                    class="badge bg-warning text-dark me-1 mb-1">{{ b }}</span>
+                  <span v-if="!result.ner_analysis.brands_and_orgs?.length" class="text-muted">None found</span>
+                </div>
+                <div class="col-md-6">
+                  <div class="fw-semibold mb-1 text-info">People Mentioned</div>
+                  <span v-for="(p, i) in (result.ner_analysis.people_mentioned || [])" :key="i"
+                    class="badge bg-info text-dark me-1 mb-1">{{ p }}</span>
+                  <span v-if="!result.ner_analysis.people_mentioned?.length" class="text-muted">None found</span>
+                </div>
+              </div>
+              <div class="small text-muted mt-2">Total entities: {{ result.ner_analysis.entity_count ?? 0 }}</div>
+            </div>
+          </div>
+
+          <!-- Emotion ML Analysis -->
+          <div v-if="result.emotion_ml_analysis" class="card border-0 shadow-sm">
+            <div class="card-body">
+              <h6 class="fw-semibold mb-2">
+                🧠 Emotion Analysis (ML)
+                <span class="badge bg-secondary ms-1 fw-normal" style="font-size:0.65rem">{{ result.emotion_ml_analysis.model }}</span>
+              </h6>
+              <div v-if="result.emotion_ml_analysis.succeeded">
+                <div class="mb-2">
+                  <span class="fw-semibold">Dominant: </span>
+                  <span :class="emotionBadgeClass(result.emotion_ml_analysis.dominant_emotion)" class="badge">
+                    {{ result.emotion_ml_analysis.dominant_emotion }}
+                  </span>
+                  <span class="text-muted small ms-2">from {{ result.emotion_ml_analysis.evaluated_count }} comments</span>
+                </div>
+                <div class="d-flex flex-wrap gap-1">
+                  <template v-for="(score, emotion) in (result.emotion_ml_analysis.scores || {})" :key="emotion">
+                    <div class="d-flex align-items-center gap-1 small">
+                      <span class="text-muted">{{ emotion }}:</span>
+                      <div class="progress" style="width:60px;height:8px;">
+                        <div class="progress-bar bg-primary" :style="{ width: `${score * 100}%` }"></div>
+                      </div>
+                      <span>{{ (score * 100).toFixed(0) }}%</span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div v-else class="small text-muted">{{ result.emotion_ml_analysis.note || 'Model unavailable' }}</div>
             </div>
           </div>
 
@@ -191,6 +251,15 @@ function toPretty(v) {
 
 function joinList(v) {
   return Array.isArray(v) && v.length ? v.join(', ') : 'None';
+}
+
+function emotionBadgeClass(emotion) {
+  const map = {
+    joy: 'bg-success', anger: 'bg-danger', sadness: 'bg-secondary',
+    fear: 'bg-warning text-dark', surprise: 'bg-info text-dark', neutral: 'bg-light text-dark',
+    disgust: 'bg-dark'
+  };
+  return map[(emotion || '').toLowerCase()] || 'bg-secondary';
 }
 
 function isAuthError(error) {

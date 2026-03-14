@@ -15,10 +15,12 @@ namespace InfluencerMatch.Infrastructure.Services
     public class AdvancedAnalyticsService : IAdvancedAnalyticsService
     {
         private readonly ApplicationDbContext _db;
+        private readonly IGroqLlmService _groq;
 
-        public AdvancedAnalyticsService(ApplicationDbContext db)
+        public AdvancedAnalyticsService(ApplicationDbContext db, IGroqLlmService groq)
         {
-            _db = db;
+            _db   = db;
+            _groq = groq;
         }
 
         public async Task<CreatorInsightsDto?> GetCreatorInsightsAsync(
@@ -44,9 +46,18 @@ namespace InfluencerMatch.Infrastructure.Services
                 .Take(60)
                 .ToListAsync(ct);
 
-            var health = BuildHealth(creator, videos, growth, brandCategory);
+            var health   = BuildHealth(creator, videos, growth, brandCategory);
             var audience = BuildAudience(creator, videos);
             var coaching = BuildCoaching(videos);
+
+            // Enrich coaching with LLM-generated tips (non-blocking — null when Groq key absent)
+            var avgViews    = videos.Count > 0 ? videos.Average(v => (double)v.ViewCount) : 0;
+            var engRate     = creator.EngagementRate > 0 ? creator.EngagementRate : 0;
+            coaching.AiInsights = await _groq.GenerateCreatorCoachingTipsAsync(
+                creator.ChannelName ?? creator.Category ?? "this channel",
+                creator.Category ?? "General",
+                avgViews, engRate,
+                coaching.BestPostingWindow);
 
             await UpsertCreatorHealthSnapshotAsync(creatorId, health, audience, coaching, ct);
 
@@ -123,9 +134,18 @@ namespace InfluencerMatch.Infrastructure.Services
                 EngagementRate = channel.EngagementRate,
             };
 
-            var health = BuildHealth(pseudoCreator, videos, new List<CreatorGrowth>(), profile.Category);
+            var health   = BuildHealth(pseudoCreator, videos, new List<CreatorGrowth>(), profile.Category);
             var audience = BuildAudience(pseudoCreator, videos);
             var coaching = BuildCoaching(videos);
+
+            // Enrich coaching with LLM-generated tips
+            var selfAvgViews = videos.Count > 0 ? videos.Average(v => (double)v.ViewCount) : 0;
+            var selfEngRate  = pseudoCreator.EngagementRate > 0 ? pseudoCreator.EngagementRate : 0;
+            coaching.AiInsights = await _groq.GenerateCreatorCoachingTipsAsync(
+                channel.ChannelName ?? profile.Category ?? "this channel",
+                profile.Category ?? "General",
+                selfAvgViews, selfEngRate,
+                coaching.BestPostingWindow);
 
             return new CreatorInsightsDto
             {

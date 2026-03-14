@@ -15,13 +15,23 @@ namespace InfluencerMatch.Application.Services
         private readonly IInfluencerRepository _influencerRepo;
         private readonly ICreatorRepository _creatorRepo;
         private readonly IMapper _mapper;
+        private readonly IHuggingFaceNlpService _nlpService;
+        private readonly IGroqLlmService _groqService;
 
-        public MatchService(ICampaignRepository campaignRepo, IInfluencerRepository influencerRepo, ICreatorRepository creatorRepo, IMapper mapper)
+        public MatchService(
+            ICampaignRepository campaignRepo,
+            IInfluencerRepository influencerRepo,
+            ICreatorRepository creatorRepo,
+            IMapper mapper,
+            IHuggingFaceNlpService nlpService,
+            IGroqLlmService groqService)
         {
-            _campaignRepo = campaignRepo;
+            _campaignRepo  = campaignRepo;
             _influencerRepo = influencerRepo;
-            _creatorRepo = creatorRepo;
-            _mapper = mapper;
+            _creatorRepo   = creatorRepo;
+            _mapper        = mapper;
+            _nlpService    = nlpService;
+            _groqService   = groqService;
         }
 
         public async Task<IEnumerable<MatchResultDto>> MatchCampaignAsync(int campaignId, bool includeOverBudget = false)
@@ -166,7 +176,59 @@ namespace InfluencerMatch.Application.Services
                 });
             }
 
-            return results.OrderByDescending(r => r.Score);
+            // ── Semantic reranking (batch embeddings) for top-20 candidates ────────────────
+            var heuristicTop = results.OrderByDescending(r => r.Score).Take(20).ToList();
+            var remaining    = results.OrderByDescending(r => r.Score).Skip(20).ToList();
+
+            try
+            {
+                var campaignText = $"{campaign.Category ?? "general"} brand campaign targeting {campaign.TargetLocation ?? "global"}";
+                var creatorTextsFull = heuristicTop
+                    .Select(r => $"{r.Name ?? "creator"} {r.SourceType.ToLower()} content creator")
+                    .ToList();
+
+                var allTexts = new List<string> { campaignText }.Concat(creatorTextsFull).ToList();
+                var embeddings = await _nlpService.GetEmbeddingsBatchAsync(allTexts);
+
+                if (embeddings.Count == allTexts.Count)
+                {
+                    var campaignVector = embeddings[0];
+                    for (int i = 0; i < heuristicTop.Count; i++)
+                    {
+                        var creatorVector = embeddings[i + 1];
+                        var similarity    = _nlpService.CosineSimilarity(campaignVector, creatorVector);
+                        // Blend: add semantic bonus capped at +25 points
+                        heuristicTop[i].Score += similarity * 25;
+                        heuristicTop[i].SemanticSimilarity = Math.Round(similarity, 3);
+                        if (similarity > 0.55)
+                            heuristicTop[i].WhyRecommended = heuristicTop[i].WhyRecommended
+                                .Append($"Semantic content match: {similarity * 100:F0}% cosine similarity to campaign profile")
+                                .ToArray();
+                    }
+                }
+            }
+            catch { /* embedding reranking is non-blocking — continue with heuristic order */ }
+
+            // Generate LLM match explanation for top 5 (non-blocking)
+            try
+            {
+                var top5 = heuristicTop.OrderByDescending(r => r.Score).Take(5).ToList();
+                foreach (var match in top5)
+                {
+                    var explanation = await _groqService.ExplainCreatorBrandMatchAsync(
+                        campaign.Category ?? "general",
+                        campaign.TargetLocation ?? "global",
+                        match.SourceType,
+                        "",
+                        Math.Min(match.Score, 100));
+                    if (!string.IsNullOrWhiteSpace(explanation))
+                        match.AiMatchExplanation = explanation;
+                }
+            }
+            catch { /* LLM explanation is non-blocking */ }
+
+            return heuristicTop.OrderByDescending(r => r.Score)
+                .Concat(remaining.OrderByDescending(r => r.Score));
         }
 
         private static decimal EstimateCreatorPricePerPost(long subscribers, double engagementRate)

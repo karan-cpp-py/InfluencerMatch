@@ -82,6 +82,9 @@ builder.Services.AddScoped<IYouTubeVideoAnalysisService, InfluencerMatch.Infrast
 // YouTube Creator Import — SuperAdmin manual job
 builder.Services.AddScoped<IYouTubeCreatorImportService, InfluencerMatch.Infrastructure.Services.YouTubeCreatorImportService>();
 builder.Services.AddScoped<IAdvancedAnalyticsService,    InfluencerMatch.Infrastructure.Services.AdvancedAnalyticsService>();
+// AI / NLP / LLM services (free-tier external APIs — degrade gracefully when keys absent)
+builder.Services.AddScoped<IHuggingFaceNlpService, InfluencerMatch.Infrastructure.Services.HuggingFaceNlpService>();
+builder.Services.AddScoped<IGroqLlmService,        InfluencerMatch.Infrastructure.Services.GroqLlmService>();
 // AddHostedService<CreatorStatsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 // AddHostedService<VideoMetricsUpdateWorker>() — disabled: triggered manually by SuperAdmin
 

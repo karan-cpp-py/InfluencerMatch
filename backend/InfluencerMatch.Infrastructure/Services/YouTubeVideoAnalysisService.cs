@@ -22,6 +22,8 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly string? _apiKey;
         private readonly string _hfModel;
         private readonly string? _hfApiToken;
+        private readonly IHuggingFaceNlpService _nlpService;
+        private readonly IGroqLlmService _groqService;
 
         private static readonly string[] ConfirmedCollabKeywords =
         {
@@ -64,10 +66,14 @@ namespace InfluencerMatch.Infrastructure.Services
         public YouTubeVideoAnalysisService(
             IHttpClientFactory http,
             IConfiguration config,
-            ILogger<YouTubeVideoAnalysisService> logger)
+            ILogger<YouTubeVideoAnalysisService> logger,
+            IHuggingFaceNlpService nlpService,
+            IGroqLlmService groqService)
         {
-            _http = http;
-            _logger = logger;
+            _http        = http;
+            _logger      = logger;
+            _nlpService  = nlpService;
+            _groqService = groqService;
             _apiKey =
                 config["YouTube:ApiKey"]
                 ?? config["YouTube__ApiKey"]
@@ -163,6 +169,21 @@ namespace InfluencerMatch.Infrastructure.Services
                 .ToList();
             var sentimentModel = await AnalyzeSentimentWithModelAsync(commentTexts, Math.Min(maxFetch, 200));
 
+            // ── Additional NLP / LLM enrichment (graceful fallback if API unavailable) ──
+            var emotionResult = await _nlpService.DetectEmotionsAsync(commentTexts.Take(20));
+            var nerEntities   = await _nlpService.RecognizeEntitiesAsync($"{title} {description}");
+            var nerBrands     = nerEntities
+                .Where(e => e.EntityGroup is "ORG" or "MISC")
+                .Select(e => e.Word)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var nerPeople     = nerEntities
+                .Where(e => e.EntityGroup == "PER")
+                .Select(e => e.Word)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var aiVideoSummary = await _groqService.SummarizeVideoAsync(title, description);
+
             // ── NLP primitives (used by both comment intelligence & recommendations) ──
             var nlpSentiment = !sentimentModel.Succeeded
                 ? (sentimentModel.Status == "insufficient_sample" ? "insufficient" : "model_unavailable")
@@ -241,10 +262,33 @@ namespace InfluencerMatch.Infrastructure.Services
 
             object output = new
             {
-                video_summary = videoSummary,
+                video_summary = new
+                {
+                    summary    = videoSummary.GetType().GetProperty("summary")?.GetValue(videoSummary),
+                    ai_summary = aiVideoSummary,
+                    metadata   = videoSummary.GetType().GetProperty("metadata")?.GetValue(videoSummary),
+                    analysis_context = videoSummary.GetType().GetProperty("analysis_context")?.GetValue(videoSummary)
+                },
                 collaboration_detection = collaboration,
+                ner_analysis = new
+                {
+                    model              = "Jean-Baptiste/roberta-large-ner-english",
+                    brands_and_orgs    = nerBrands,
+                    people_mentioned   = nerPeople,
+                    all_entities       = nerEntities.Take(20).Select(e => new { entity_group = e.EntityGroup, word = e.Word, score = e.Score }),
+                    entity_count       = nerEntities.Count
+                },
                 growth_analysis = growth,
                 comment_intelligence = commentIntelligence,
+                emotion_ml_analysis = new
+                {
+                    model              = "j-hartmann/emotion-english-distilroberta-base",
+                    succeeded          = emotionResult.Succeeded,
+                    dominant_emotion   = emotionResult.DominantEmotion,
+                    scores             = emotionResult.Scores,
+                    evaluated_count    = emotionResult.EvaluatedCount,
+                    note               = emotionResult.Note
+                },
                 brand_agency_readout = brandReadout,
                 recommendations = recommendations,
                 missing_data_checklist = missingDataChecklist,
