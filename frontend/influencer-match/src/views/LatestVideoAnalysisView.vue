@@ -40,6 +40,40 @@
         <div v-if="apiError" :class="['alert', apiNoticeKind === 'info' ? 'alert-info' : 'alert-warning']">{{ apiError }}</div>
 
         <div v-if="result" class="d-flex flex-column gap-3">
+          <div v-if="result.ai_final_verdict" class="card border-0 shadow-sm border-start border-4" :class="verdictBorderClass(result.ai_final_verdict.go_no_go)">
+            <div class="card-body">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                <h6 class="fw-semibold mb-0">AI Final Verdict</h6>
+                <div class="d-flex flex-wrap gap-2">
+                  <span class="badge" :class="goNoGoBadgeClass(result.ai_final_verdict.go_no_go)">
+                    {{ (result.ai_final_verdict.go_no_go || 'unknown').toUpperCase() }}
+                  </span>
+                  <span class="badge bg-dark">Readiness {{ clampScore(result.ai_final_verdict.brand_readiness_score) }}/100</span>
+                  <span class="badge" :class="confidenceBadgeClass(result.ai_final_verdict.confidence)">
+                    Confidence {{ capitalize(result.ai_final_verdict.confidence || 'medium') }}
+                  </span>
+                  <span class="badge bg-secondary">{{ result.ai_final_verdict.source || 'ai' }}</span>
+                </div>
+              </div>
+
+              <div class="progress mb-2" style="height: 10px;">
+                <div
+                  class="progress-bar"
+                  :class="readinessBarClass(result.ai_final_verdict.brand_readiness_score)"
+                  :style="{ width: `${clampScore(result.ai_final_verdict.brand_readiness_score)}%` }"
+                ></div>
+              </div>
+
+              <p class="mb-2 small">{{ result.ai_final_verdict.final_verdict || 'No AI verdict generated.' }}</p>
+              <div class="small mb-2"><strong>Recommended Format:</strong> {{ result.ai_final_verdict.recommended_format || '—' }}</div>
+
+              <div class="small fw-semibold mb-1">Top Reasons</div>
+              <ul class="small ps-3 mb-0">
+                <li v-for="(reason, i) in (result.ai_final_verdict.top_reasons || [])" :key="`vr-${i}`" class="mb-1">{{ reason }}</li>
+              </ul>
+            </div>
+          </div>
+
           <div class="card border-0 shadow-sm">
             <div class="card-body">
               <h6 class="fw-semibold mb-2">Video Summary</h6>
@@ -56,6 +90,7 @@
                 <div><strong>Duration:</strong> {{ result.video_summary?.metadata?.duration || '—' }}</div>
                 <div><strong>Language:</strong> {{ result.video_summary?.metadata?.language || '—' }}</div>
                 <div><strong>Category:</strong> {{ result.video_summary?.metadata?.category_id || '—' }}</div>
+                <div><strong>Tag Count:</strong> {{ result.video_summary?.metadata?.tags?.length ?? 0 }}</div>
               </div>
             </div>
           </div>
@@ -141,8 +176,8 @@
                 <div><strong>Views:</strong> {{ fmtNum(result.growth_analysis?.performance_snapshot?.view_count) }}</div>
                 <div><strong>Likes:</strong> {{ fmtNum(result.growth_analysis?.performance_snapshot?.like_count) }}</div>
                 <div><strong>Comments:</strong> {{ fmtNum(result.growth_analysis?.performance_snapshot?.comment_count) }}</div>
-                <div><strong>Likes/View:</strong> {{ result.growth_analysis?.engagement_ratios?.likes_per_view ?? '—' }}</div>
-                <div><strong>Comments/View:</strong> {{ result.growth_analysis?.engagement_ratios?.comments_per_view ?? '—' }}</div>
+                <div><strong>Likes/View:</strong> {{ percent(result.growth_analysis?.engagement_ratios?.likes_per_view) }}</div>
+                <div><strong>Comments/View:</strong> {{ percent(result.growth_analysis?.engagement_ratios?.comments_per_view) }}</div>
                 <div><strong>Benchmark note:</strong> {{ result.growth_analysis?.benchmarks || '—' }}</div>
               </div>
             </div>
@@ -153,11 +188,34 @@
               <h6 class="fw-semibold mb-2">Comment Intelligence</h6>
               <div class="small mb-2"><strong>Sentiment:</strong> {{ result.comment_intelligence?.overall_sentiment || '—' }}</div>
               <div class="small mb-2"><strong>Sample Size:</strong> {{ fmtNum(result.comment_intelligence?.sample_coverage?.sample_size) }}</div>
+              <div class="small mb-2"><strong>Evaluated by Model:</strong> {{ fmtNum(result.comment_intelligence?.sample_coverage?.sentiment_model?.evaluated_comments) }}</div>
               <div class="small mb-2"><strong>Fetch Mode:</strong> {{ result.comment_intelligence?.sample_coverage?.fetch?.mode || '—' }}</div>
+              <div class="small mb-2"><strong>Fetched Count:</strong> {{ fmtNum(result.comment_intelligence?.sample_coverage?.fetch?.fetched_count) }}</div>
+              <div class="small mb-2"><strong>Videos Considered:</strong> {{ fmtNum(result.comment_intelligence?.sample_coverage?.fetch?.videos_considered) }}</div>
               <div class="small mb-2"><strong>Fetch Note:</strong> {{ result.comment_intelligence?.sample_coverage?.fetch?.note || '—' }}</div>
               <div class="small mb-2"><strong>Sentiment Source:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.source || '—' }}</div>
               <div class="small mb-2"><strong>Sentiment Model Status:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.status || '—' }}</div>
               <div class="small mb-2"><strong>Sentiment Note:</strong> {{ result.comment_intelligence?.sample_coverage?.sentiment_model?.note || '—' }}</div>
+
+              <div class="small fw-semibold mb-1">Sentiment Breakdown</div>
+              <div class="d-flex flex-column gap-1 mb-2">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="small text-muted" style="width:70px">Positive</span>
+                  <div class="progress flex-grow-1" style="height:8px;"><div class="progress-bar bg-success" :style="{ width: `${result.comment_intelligence?.sentiment_breakdown?.positive_pct ?? 0}%` }"></div></div>
+                  <span class="small" style="width:40px">{{ result.comment_intelligence?.sentiment_breakdown?.positive_pct ?? 0 }}%</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="small text-muted" style="width:70px">Mixed</span>
+                  <div class="progress flex-grow-1" style="height:8px;"><div class="progress-bar bg-warning" :style="{ width: `${result.comment_intelligence?.sentiment_breakdown?.mixed_pct ?? 0}%` }"></div></div>
+                  <span class="small" style="width:40px">{{ result.comment_intelligence?.sentiment_breakdown?.mixed_pct ?? 0 }}%</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="small text-muted" style="width:70px">Negative</span>
+                  <div class="progress flex-grow-1" style="height:8px;"><div class="progress-bar bg-danger" :style="{ width: `${result.comment_intelligence?.sentiment_breakdown?.negative_pct ?? 0}%` }"></div></div>
+                  <span class="small" style="width:40px">{{ result.comment_intelligence?.sentiment_breakdown?.negative_pct ?? 0 }}%</span>
+                </div>
+              </div>
+
               <div class="small mb-2"><strong>Top Themes:</strong> {{ joinList(result.comment_intelligence?.top_5_themes) }}</div>
               <div class="small mb-1 fw-semibold">Audience Questions</div>
               <ul class="small mb-2 ps-3">
@@ -243,6 +301,55 @@ function fmtNum(v) {
   if (v === null || v === undefined) return '—';
   const n = Number(v);
   return Number.isFinite(n) ? n.toLocaleString() : '—';
+}
+
+function percent(v) {
+  if (v === null || v === undefined) return '—';
+  const n = Number(v);
+  return Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : '—';
+}
+
+function clampScore(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function capitalize(v) {
+  const s = String(v || '').trim();
+  if (!s) return 'Unknown';
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function goNoGoBadgeClass(v) {
+  const key = String(v || '').toLowerCase();
+  if (key === 'go') return 'bg-success';
+  if (key === 'conditional_go') return 'bg-warning text-dark';
+  if (key === 'no_go') return 'bg-danger';
+  return 'bg-secondary';
+}
+
+function confidenceBadgeClass(v) {
+  const key = String(v || '').toLowerCase();
+  if (key === 'high') return 'bg-success';
+  if (key === 'medium') return 'bg-info text-dark';
+  if (key === 'low') return 'bg-secondary';
+  return 'bg-secondary';
+}
+
+function verdictBorderClass(v) {
+  const key = String(v || '').toLowerCase();
+  if (key === 'go') return 'border-success';
+  if (key === 'conditional_go') return 'border-warning';
+  if (key === 'no_go') return 'border-danger';
+  return 'border-secondary';
+}
+
+function readinessBarClass(v) {
+  const score = clampScore(v);
+  if (score >= 75) return 'bg-success';
+  if (score >= 55) return 'bg-warning';
+  return 'bg-danger';
 }
 
 function toPretty(v) {
