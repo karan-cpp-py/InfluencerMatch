@@ -22,39 +22,209 @@
 
       <section class="card border-0 shadow-sm mb-3 search-panel">
         <div class="card-body">
-          <div class="row g-2 align-items-end">
-            <div class="col-lg-4">
-              <label class="form-label small text-muted">Search query</label>
-              <input
-                v-model.trim="filters.query"
-                class="form-control"
-                placeholder="e.g. tech review hindi, gaming shorts india, skincare creators"
-                @keyup.enter="runSearch"
-              />
+
+          <!-- ── Search mode selector ───────────────────────────── -->
+          <div class="search-mode-tabs mb-4">
+            <button
+              v-for="m in searchModes"
+              :key="m.id"
+              :class="['search-mode-tab', searchMode === m.id ? 'active' : '']"
+              @click="switchMode(m.id)"
+              type="button"
+            >
+              <span class="mode-icon">{{ m.icon }}</span>
+              <div>
+                <div class="mode-title">{{ m.label }}</div>
+                <div class="mode-hint">{{ m.hint }}</div>
+              </div>
+            </button>
+          </div>
+
+          <!-- ══════════════════════════════════════════
+               MODE A: Channel Link
+          ══════════════════════════════════════════ -->
+          <div v-if="searchMode === 'channel-link'">
+            <div class="row g-2 align-items-end">
+              <div class="col-lg-8">
+                <label class="form-label small text-muted">YouTube Channel URL</label>
+                <input
+                  v-model.trim="channelUrl"
+                  class="form-control"
+                  placeholder="e.g. https://youtube.com/@MrBeast  or  youtube.com/channel/UCxxx"
+                  @keyup.enter="resolveChannel"
+                />
+              </div>
+              <div class="col-lg-2 d-grid">
+                <button
+                  class="btn btn-primary"
+                  :disabled="loadingResolve || !channelUrl"
+                  @click="resolveChannel"
+                >
+                  <span v-if="loadingResolve" class="spinner-border spinner-border-sm me-1"></span>
+                  Find Creator
+                </button>
+              </div>
             </div>
-            <div class="col-lg-2 col-md-4">
-              <label class="form-label small text-muted">Category</label>
-              <input v-model.trim="filters.category" class="form-control" placeholder="Optional" />
+            <p class="small text-muted mt-2 mb-0">
+              Supported: <code>youtube.com/@handle</code> · <code>youtube.com/channel/UCxxx</code> · <code>youtube.com/c/name</code>
+            </p>
+            <div v-if="resolveError" class="alert alert-warning mt-3 mb-0 py-2">{{ resolveError }}</div>
+          </div>
+
+          <!-- ══════════════════════════════════════════
+               MODE B: Video Link
+          ══════════════════════════════════════════ -->
+          <div v-if="searchMode === 'video-link'">
+            <div class="row g-2 align-items-end">
+              <div class="col-lg-8">
+                <label class="form-label small text-muted">YouTube Video URL</label>
+                <input
+                  v-model.trim="videoUrl"
+                  class="form-control"
+                  placeholder="e.g. https://youtube.com/watch?v=dQw4w9WgXcQ  or  youtu.be/dQw4w9WgXcQ"
+                  @keyup.enter="resolveVideo"
+                />
+              </div>
+              <div class="col-lg-2 d-grid">
+                <button
+                  class="btn btn-primary"
+                  :disabled="loadingResolve || !videoUrl"
+                  @click="resolveVideo"
+                >
+                  <span v-if="loadingResolve" class="spinner-border spinner-border-sm me-1"></span>
+                  Find Creator
+                </button>
+              </div>
             </div>
-            <div class="col-lg-2 col-md-4">
-              <label class="form-label small text-muted">Country</label>
-              <input v-model.trim="filters.country" class="form-control" placeholder="IN" />
-            </div>
-            <div class="col-lg-2 col-md-4">
-              <label class="form-label small text-muted">Language</label>
-              <input v-model.trim="filters.language" class="form-control" placeholder="Hindi" />
-            </div>
-            <div class="col-lg-2 d-grid">
-              <button class="btn btn-primary" :disabled="loadingSearch || !filters.query" @click="runSearch">
-                <span v-if="loadingSearch" class="spinner-border spinner-border-sm me-1"></span>
-                Search
-              </button>
+            <p class="small text-muted mt-2 mb-0">
+              Paste any YouTube video link and we'll identify the creator behind it.
+            </p>
+            <div v-if="resolveError" class="alert alert-warning mt-3 mb-0 py-2">{{ resolveError }}</div>
+
+            <!-- Resolved video info -->
+            <div v-if="resolvedVideoTitle" class="alert alert-info mt-3 mb-0 py-2 small">
+              🎬 <strong>Video found:</strong> {{ resolvedVideoTitle }}
             </div>
           </div>
-          <div v-if="searchResult.aiSearchBrief" class="alert alert-info mt-3 mb-0 py-2">
-            <strong>AI brief:</strong> {{ searchResult.aiSearchBrief }}
+
+          <!-- ══════════════════════════════════════════
+               MODE C: General Search (existing)
+          ══════════════════════════════════════════ -->
+          <div v-if="searchMode === 'general'">
+            <div class="row g-2 align-items-end">
+              <div class="col-lg-4">
+                <label class="form-label small text-muted">Search query</label>
+                <div class="position-relative">
+                  <input
+                    v-model.trim="filters.query"
+                    class="form-control"
+                    placeholder="e.g. tech review hindi, gaming shorts india, skincare creators"
+                    @keyup.enter="runSearch"
+                    @input="onQueryInput"
+                    @focus="showSuggestions = filters.query.length === 0"
+                    @blur="hideSuggestionsDelayed"
+                    autocomplete="off"
+                  />
+                  <!-- Typeahead dropdown (shows when query empty + focused, or with prefix matches) -->
+                  <div
+                    v-if="showSuggestions && filteredSuggestions.length"
+                    class="suggestions-dropdown shadow-sm"
+                  >
+                    <div class="suggestions-section-label">🔥 Trending searches</div>
+                    <button
+                      v-for="s in filteredSuggestions"
+                      :key="s"
+                      class="suggestion-item"
+                      type="button"
+                      @mousedown.prevent="pickSuggestion(s)"
+                    >
+                      <span class="suggestion-icon">🔍</span> {{ s }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Category</label>
+                <input v-model.trim="filters.category" class="form-control" placeholder="Optional" />
+              </div>
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Country</label>
+                <input v-model.trim="filters.country" class="form-control" placeholder="IN" />
+              </div>
+              <div class="col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Language</label>
+                <input v-model.trim="filters.language" class="form-control" placeholder="Hindi" />
+              </div>
+              <div class="col-lg-2 d-grid">
+                <button class="btn btn-primary" :disabled="loadingSearch || !filters.query" @click="runSearch">
+                  <span v-if="loadingSearch" class="spinner-border spinner-border-sm me-1"></span>
+                  Search
+                </button>
+              </div>
+            </div>
+            <div v-if="searchResult.aiSearchBrief" class="alert alert-info mt-3 mb-0 py-2">
+              <strong>AI brief:</strong> {{ searchResult.aiSearchBrief }}
+            </div>
+            <div v-if="searchError" class="alert alert-warning mt-3 mb-0 py-2">{{ searchError }}</div>
           </div>
-          <div v-if="searchError" class="alert alert-warning mt-3 mb-0 py-2">{{ searchError }}</div>
+
+        </div>
+      </section>
+
+      <!-- ── Resolved creator (Channel / Video link modes) ──────── -->
+      <section v-if="resolvedCreators.length && searchMode !== 'general'" class="mb-4">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <h5 class="fw-semibold mb-0">
+            {{ resolvedCreators.length === 1 ? 'Matched Creator' : 'Matched Creators' }}
+          </h5>
+          <span class="badge text-bg-light border">{{ resolvedCreators.length }} found</span>
+          <button class="btn btn-sm btn-outline-secondary ms-auto" @click="resolvedCreators = []">Clear</button>
+        </div>
+        <div class="row g-3">
+          <div v-for="creator in resolvedCreators" :key="creator.creatorId || creator.channelId" class="col-lg-6 col-xl-4">
+            <article class="card border-0 shadow-sm result-card h-100">
+              <div class="card-body d-flex flex-column">
+                <div class="d-flex gap-3 align-items-start mb-2">
+                  <img v-if="creator.thumbnailUrl" :src="creator.thumbnailUrl" alt="thumbnail" class="thumb" />
+                  <div v-else class="thumb thumb-fallback">{{ initial(creator.channelName) }}</div>
+                  <div class="min-w-0 flex-grow-1">
+                    <h6 class="mb-1 text-truncate">{{ creator.channelName }}</h6>
+                    <div class="small text-muted text-truncate">
+                      {{ creator.category || 'General' }} · {{ creator.country || '—' }} · {{ creator.language || '—' }}
+                    </div>
+                  </div>
+                  <span class="badge text-bg-success">Exact Match</span>
+                </div>
+                <div class="row g-2 mb-3 small text-center">
+                  <div class="col-4">
+                    <div class="metric-label">Subscribers</div>
+                    <div class="fw-semibold">{{ compact(creator.subscribers) }}</div>
+                  </div>
+                  <div class="col-4">
+                    <div class="metric-label">Views</div>
+                    <div class="fw-semibold">{{ compact(creator.totalViews) }}</div>
+                  </div>
+                  <div class="col-4">
+                    <div class="metric-label">Engagement</div>
+                    <div class="fw-semibold" :class="engagementClass(creator.engagementRate)">{{ percent(creator.engagementRate) }}</div>
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                  <button class="btn btn-sm btn-outline-primary" @click="analyzeCreator(creator, 'last10')">Analyze Last 10</button>
+                  <button class="btn btn-sm btn-outline-primary" @click="analyzeCreator(creator, 'last20')">Analyze Last 20</button>
+                  <button class="btn btn-sm btn-outline-dark" @click="analyzeCreator(creator, 'channel')">Whole Channel</button>
+                </div>
+                <div class="mt-auto d-flex gap-2">
+                  <router-link v-if="creator.creatorId" :to="`/creator/${creator.creatorId}/analytics`" class="btn btn-sm btn-primary flex-grow-1">Analytics</router-link>
+                  <a :href="creator.channelUrl" target="_blank" class="btn btn-sm btn-outline-secondary">Open YT</a>
+                </div>
+                <div v-if="analysisByCreator[creatorAnalysisKey(creator)]" class="analysis-panel border-top p-3 mt-2">
+                  <h6 class="mb-1">AI Analysis</h6>
+                  <div class="small text-muted">{{ analysisByCreator[creatorAnalysisKey(creator)].aiNarrative }}</div>
+                </div>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -277,6 +447,97 @@ import { useRoute } from 'vue-router';
 import api from '../services/api';
 
 const route = useRoute();
+
+// ── Search mode ───────────────────────────────────────────────────
+const searchMode = ref('general'); // 'channel-link' | 'video-link' | 'general'
+
+const searchModes = [
+  { id: 'channel-link', icon: '🔗', label: 'Channel Link',    hint: 'Paste a YouTube channel URL' },
+  { id: 'video-link',   icon: '🎬', label: 'Video Link',      hint: 'Paste a YouTube video URL' },
+  { id: 'general',      icon: '🔍', label: 'General Search',  hint: 'Search by topic, category, language' },
+];
+
+function switchMode(m) {
+  searchMode.value = m;
+  resolvedCreators.value = [];
+  resolveError.value = '';
+  resolvedVideoTitle.value = '';
+}
+
+// ── Channel Link resolution ───────────────────────────────────────
+const channelUrl      = ref('');
+const loadingResolve  = ref(false);
+const resolveError    = ref('');
+const resolvedCreators = ref([]);
+
+async function resolveChannel() {
+  if (!channelUrl.value || loadingResolve.value) return;
+  loadingResolve.value = true;
+  resolveError.value = '';
+  resolvedCreators.value = [];
+  try {
+    const { data } = await api.get('/youtube-search/resolve-channel', { params: { url: channelUrl.value } });
+    if (data.resolved) {
+      resolvedCreators.value = data.creators ? data.creators : (data.creator ? [data.creator] : []);
+    } else {
+      resolveError.value = data.message || 'Channel not found in platform index.';
+    }
+  } catch (e) {
+    resolveError.value = e?.userMessage || 'Could not resolve channel. Check the URL and try again.';
+  } finally {
+    loadingResolve.value = false;
+  }
+}
+
+// ── Video Link resolution ─────────────────────────────────────────
+const videoUrl           = ref('');
+const resolvedVideoTitle = ref('');
+
+async function resolveVideo() {
+  if (!videoUrl.value || loadingResolve.value) return;
+  loadingResolve.value = true;
+  resolveError.value = '';
+  resolvedCreators.value = [];
+  resolvedVideoTitle.value = '';
+  try {
+    const { data } = await api.get('/youtube-search/resolve-video', { params: { url: videoUrl.value } });
+    if (data.resolved) {
+      resolvedVideoTitle.value = data.videoTitle || '';
+      resolvedCreators.value = data.creator ? [data.creator] : [];
+    } else {
+      resolveError.value = data.message || 'Video not found in platform index.';
+    }
+  } catch (e) {
+    resolveError.value = e?.userMessage || 'Could not resolve video. Check the URL and try again.';
+  } finally {
+    loadingResolve.value = false;
+  }
+}
+
+// ── General search typeahead suggestions ─────────────────────────
+const showSuggestions = ref(false);
+
+const trendingSuggestions = [
+  'tech review hindi', 'gaming india shorts', 'skincare creators india',
+  'finance tips hindi', 'cooking channel marathi', 'fitness india',
+  'comedy sketches hindi', 'education youtube india', 'travel vlog india',
+  'cricket commentary hindi', 'bollywood news hindi', 'startup india tech',
+  'music covers hindi', 'art and craft hindi', 'automobile review india',
+];
+
+const filteredSuggestions = computed(() => {
+  const q = (filters.query || '').toLowerCase().trim();
+  if (!q) return trendingSuggestions.slice(0, 8);
+  return trendingSuggestions.filter(s => s.includes(q)).slice(0, 6);
+});
+
+function onQueryInput() { showSuggestions.value = true; }
+function hideSuggestionsDelayed() { setTimeout(() => { showSuggestions.value = false; }, 200); }
+function pickSuggestion(s) {
+  filters.query = s;
+  showSuggestions.value = false;
+  runSearch();
+}
 
 const filters = reactive({
   query: '',
@@ -639,4 +900,70 @@ function engagementClass(value) {
     padding: 0.95rem;
   }
 }
+
+/* ── Search mode tabs ───────────────────────────────────────────── */
+.search-mode-tabs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.search-mode-tab {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 1rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+.search-mode-tab:hover { border-color: #0e7490; }
+.search-mode-tab.active { border-color: #0e7490; background: #ecfeff; }
+.mode-icon { font-size: 1.4rem; line-height: 1; }
+.mode-title { font-weight: 600; font-size: 0.88rem; color: #0f172a; }
+.mode-hint  { font-size: 0.72rem; color: #64748b; }
+
+/* ── Typeahead suggestions ──────────────────────────────────────── */
+.suggestions-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+.suggestions-section-label {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.85rem;
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  color: #0f172a;
+}
+.suggestion-item:hover { background: #f0f9ff; }
+.suggestion-icon { color: #94a3b8; font-size: 0.8rem; }
 </style>

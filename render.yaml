@@ -38,3 +38,20 @@ services:
         sync: false
       - key: PaymentProviders__PayPal__WebhookId
         sync: false
+      - key: GoogleAuth__ClientId
+        sync: false
+
+  - type: static
+    name: influencermatch-frontend
+    buildCommand: npm --prefix frontend/influencer-match ci && npm --prefix frontend/influencer-match run build
+    staticPublishPath: ./frontend/influencer-match/dist
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

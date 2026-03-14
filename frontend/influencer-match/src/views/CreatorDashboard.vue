@@ -270,22 +270,120 @@
 
       <!-- ── TAB: Recent Videos ─────────────────────────────────────────── -->
       <div v-if="tab === 'videos'">
+        <!-- Bulk analysis bar -->
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <h6 class="fw-semibold mb-0">Your Recent Videos</h6>
+          <button
+            class="btn btn-success fw-semibold"
+            @click="analyseAllVideos"
+            :disabled="bulkAnalysisLoading || recentVideos.length === 0"
+          >
+            <span v-if="bulkAnalysisLoading" class="spinner-border spinner-border-sm me-1"></span>
+            <span v-else>🤖</span>
+            Analyse Recent {{ Math.min(recentVideos.length, 10) }} Videos with AI
+          </button>
+        </div>
+
         <div v-if="recentVideos.length === 0" class="text-center text-muted py-5">No videos fetched yet.</div>
         <div class="row g-3">
           <div v-for="v in recentVideos" :key="v.youtubeVideoId" class="col-md-6 col-lg-4">
             <div class="card border-0 shadow-sm h-100 section-card">
               <img v-if="v.thumbnailUrl" :src="v.thumbnailUrl" class="card-img-top" style="height:160px;object-fit:cover;" :alt="v.title" />
-              <div class="card-body p-3">
+              <div class="card-body p-3 d-flex flex-column">
                 <p class="fw-semibold small mb-2 lh-sm" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ v.title }}</p>
                 <div class="d-flex justify-content-between small text-muted">
                   <span>👁 {{ fmtNum(v.viewCount) }}</span>
                   <span>👍 {{ fmtNum(v.likeCount) }}</span>
                   <span>💬 {{ fmtNum(v.commentCount) }}</span>
                 </div>
-                <div class="small text-muted mt-1">{{ fmtDate(v.publishedAt) }}</div>
+                <div class="small text-muted mt-1 mb-2">{{ fmtDate(v.publishedAt) }}</div>
+                <!-- Per-video analyse button -->
+                <div class="mt-auto">
+                  <router-link
+                    :to="`/creator/latest-video-analysis`"
+                    class="btn btn-sm btn-outline-primary w-100"
+                  >🔍 Analyse with AI</router-link>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- ── Bulk AI Analysis Results ────────────────────────────────── -->
+        <div v-if="bulkAnalysisResult" class="mt-4">
+          <div class="card border-0 shadow-sm section-card">
+            <div class="card-body p-4">
+              <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+                <div>
+                  <h5 class="fw-bold mb-1">🤖 AI Video Performance Report</h5>
+                  <p class="text-muted small mb-0">
+                    Videos ranked by composite engagement score · Channel avg: {{ fmtNum(bulkAnalysisResult.avgViews) }} views
+                  </p>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @click="bulkAnalysisResult = null">✕ Close</button>
+              </div>
+
+              <!-- Ranked video list -->
+              <div class="d-flex flex-column gap-3 mb-4">
+                <div
+                  v-for="item in bulkAnalysisResult.ranked"
+                  :key="item.youtubeVideoId"
+                  class="ranked-video-card p-3 rounded-3 border"
+                  :class="item.rank <= 3 ? 'border-success bg-success bg-opacity-10' : item.rank >= 8 ? 'border-danger bg-danger bg-opacity-10' : 'border-secondary'"
+                >
+                  <div class="d-flex gap-3 align-items-start">
+                    <!-- Rank badge -->
+                    <div class="rank-badge flex-shrink-0" :class="rankBadgeClass(item.rank)">
+                      #{{ item.rank }}
+                    </div>
+                    <!-- Thumbnail -->
+                    <img
+                      v-if="item.thumbnailUrl"
+                      :src="item.thumbnailUrl"
+                      class="rounded-2 flex-shrink-0"
+                      style="width:80px;height:52px;object-fit:cover;"
+                      :alt="item.title"
+                    />
+                    <!-- Info -->
+                    <div class="flex-grow-1 min-w-0">
+                      <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap mb-1">
+                        <p class="fw-semibold small mb-0" style="line-height:1.3">{{ item.title }}</p>
+                        <span class="badge flex-shrink-0" :class="performanceBadgeClass(item.performanceLabel)">
+                          {{ item.performanceLabel }}
+                        </span>
+                      </div>
+                      <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
+                        <span>👁 {{ fmtNum(item.viewCount) }}</span>
+                        <span>👍 {{ fmtNum(item.likeCount) }}</span>
+                        <span>💬 {{ fmtNum(item.commentCount) }}</span>
+                        <span>📅 {{ item.daysAgo }}d ago</span>
+                        <span>⚡ {{ item.engagementRate }}% ER</span>
+                        <span class="text-primary fw-semibold">Score: {{ item.compositeScore }}</span>
+                      </div>
+                      <!-- LLM narrative -->
+                      <div class="small p-2 rounded-2 bg-white border lh-sm">
+                        <span class="text-muted me-1">🧠</span>{{ item.narrative }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Topic recommendations -->
+              <div v-if="bulkAnalysisResult.topicAdvice && bulkAnalysisResult.topicAdvice.length" class="topic-advice-card p-3 rounded-3 border border-primary bg-primary bg-opacity-10">
+                <h6 class="fw-bold mb-2 text-primary">🎯 Content Strategy Recommendations</h6>
+                <p class="small text-muted mb-2">Based on your top 3 videos, here's what you should make next:</p>
+                <ol class="mb-0 ps-3">
+                  <li v-for="(line, i) in bulkAnalysisResult.topicAdvice" :key="i" class="small mb-1 lh-sm">{{ line }}</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk analysis error -->
+        <div v-if="bulkAnalysisError" class="alert alert-warning mt-3">
+          {{ bulkAnalysisError }}
         </div>
       </div>
 
@@ -488,6 +586,40 @@ const oauthCode = ref('');
 // Videos
 const recentVideos = ref([]);
 const pendingCollabs = ref(0);
+
+// Bulk AI video analysis
+const bulkAnalysisLoading = ref(false);
+const bulkAnalysisError   = ref('');
+const bulkAnalysisResult  = ref(null);
+
+async function analyseAllVideos() {
+  if (bulkAnalysisLoading.value) return;
+  bulkAnalysisLoading.value = true;
+  bulkAnalysisError.value   = '';
+  bulkAnalysisResult.value  = null;
+  try {
+    const { data } = await api.get('/creator/videos/ranked-insights');
+    bulkAnalysisResult.value = data;
+  } catch (e) {
+    bulkAnalysisError.value = e.userMessage || e.response?.data?.error || 'AI analysis failed. Please try again.';
+  } finally {
+    bulkAnalysisLoading.value = false;
+  }
+}
+
+function rankBadgeClass(rank) {
+  if (rank === 1) return 'rank-gold';
+  if (rank === 2) return 'rank-silver';
+  if (rank === 3) return 'rank-bronze';
+  if (rank >= 8)  return 'rank-poor';
+  return 'rank-mid';
+}
+
+function performanceBadgeClass(label) {
+  if (label === 'Top Performer') return 'bg-success';
+  if (label === 'Needs Attention') return 'bg-danger';
+  return 'bg-secondary';
+}
 
 // Collabs
 const collabs = ref([]);
@@ -958,6 +1090,33 @@ function fmtDate(d) {
 .section-card {
   border-radius: 18px;
 }
+
+/* ── Bulk AI Video Analysis ─────────────────────────────────────── */
+.ranked-video-card {
+  transition: box-shadow 0.16s ease;
+}
+.ranked-video-card:hover {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+
+.rank-badge {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.rank-gold   { background: #fef9c3; color: #854d0e; border: 2px solid #fbbf24; }
+.rank-silver { background: #f1f5f9; color: #1e293b; border: 2px solid #94a3b8; }
+.rank-bronze { background: #fff7ed; color: #92400e; border: 2px solid #fb923c; }
+.rank-mid    { background: #f8fafc; color: #475569; border: 2px solid #e2e8f0; }
+.rank-poor   { background: #fff1f2; color: #9f1239; border: 2px solid #fda4af; }
+
+.topic-advice-card { border-radius: 14px; }
 
 @media (max-width: 768px) {
   .creator-hero {
