@@ -164,11 +164,38 @@
               </div>
 
               <!-- Contact badges -->
-              <div class="d-flex flex-wrap gap-1 mb-0">
+              <div class="d-flex flex-wrap gap-1 mb-2">
                 <span v-if="c.publicEmail"   class="badge bg-primary-subtle text-primary">✉ Email</span>
                 <span v-if="c.instagramHandle" class="badge bg-danger-subtle text-danger">📸 Instagram</span>
                 <span v-if="c.twitterHandle"   class="badge bg-info-subtle text-info">🐦 Twitter/X</span>
                 <span v-if="c.channelUrl"       class="badge bg-success-subtle text-success">▶ YouTube</span>
+              </div>
+
+              <div class="d-flex flex-wrap gap-1">
+                <button class="btn btn-outline-primary btn-sm" @click.stop="openDetail(c)">
+                  View Profile
+                </button>
+                <router-link
+                  :to="`/creator/${c.creatorId}/analytics`"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click.stop
+                >
+                  Channel Analytics
+                </router-link>
+                <router-link
+                  :to="`/creator/${c.creatorId}/video-analytics`"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click.stop
+                >
+                  Video Analytics
+                </router-link>
+                <router-link
+                  :to="`/creator/${c.creatorId}/latest-video-analysis`"
+                  class="btn btn-outline-dark btn-sm"
+                  @click.stop
+                >
+                  Analyze with AI
+                </router-link>
               </div>
             </div>
           </div>
