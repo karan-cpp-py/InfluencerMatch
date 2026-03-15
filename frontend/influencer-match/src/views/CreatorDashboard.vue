@@ -285,9 +285,30 @@
           </button>
         </div>
 
+        <div class="row g-2 mb-3 align-items-end">
+          <div class="col-md-8">
+            <label class="form-label small text-muted mb-1">Search videos</label>
+            <input
+              v-model.trim="videoSearch"
+              class="form-control form-control-sm"
+              placeholder="Search by title"
+            />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small text-muted mb-1">Sort</label>
+            <select v-model="videoSort" class="form-select form-select-sm">
+              <option value="recent">Most recent</option>
+              <option value="views">Most viewed</option>
+              <option value="likes">Most liked</option>
+              <option value="comments">Most commented</option>
+            </select>
+          </div>
+        </div>
+
         <div v-if="recentVideos.length === 0" class="text-center text-muted py-5">No videos fetched yet.</div>
+        <div v-else-if="filteredRecentVideos.length === 0" class="text-center text-muted py-4">No videos match your search.</div>
         <div class="row g-3">
-          <div v-for="v in recentVideos" :key="v.youtubeVideoId" class="col-md-6 col-lg-4">
+          <div v-for="v in filteredRecentVideos" :key="v.youtubeVideoId" class="col-md-6 col-lg-4">
             <div class="card border-0 shadow-sm h-100 section-card">
               <img v-if="v.thumbnailUrl" :src="v.thumbnailUrl" class="card-img-top" style="height:160px;object-fit:cover;" :alt="v.title" />
               <div class="card-body p-3 d-flex flex-column">
@@ -591,6 +612,29 @@ const oauthCode = ref('');
 const recentVideos = ref([]);
 const pendingCollabs = ref(0);
 const videoAiDialog = ref(null);
+const videoSearch = ref('');
+const videoSort = ref('recent');
+
+const filteredRecentVideos = computed(() => {
+  let list = [...(recentVideos.value || [])];
+
+  if (videoSearch.value) {
+    const q = videoSearch.value.toLowerCase();
+    list = list.filter((v) => String(v.title || '').toLowerCase().includes(q));
+  }
+
+  if (videoSort.value === 'views') {
+    list.sort((a, b) => Number(b.viewCount || 0) - Number(a.viewCount || 0));
+  } else if (videoSort.value === 'likes') {
+    list.sort((a, b) => Number(b.likeCount || 0) - Number(a.likeCount || 0));
+  } else if (videoSort.value === 'comments') {
+    list.sort((a, b) => Number(b.commentCount || 0) - Number(a.commentCount || 0));
+  } else {
+    list.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+  }
+
+  return list;
+});
 
 function openInlineAiAnalysis(video) {
   videoAiDialog.value?.open({

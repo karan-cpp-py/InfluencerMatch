@@ -128,7 +128,11 @@
         </div>
 
         <!-- Role Tabs -->
-        <div class="role-tabs d-flex justify-content-center flex-wrap gap-2 mb-5">
+        <div
+          class="role-tabs d-flex justify-content-center flex-wrap gap-2 mb-3"
+          @mouseenter="pauseGuestRotation"
+          @mouseleave="resumeGuestRotation"
+        >
           <button
             v-for="t in guestTabs"
             :key="t.key"
@@ -137,6 +141,15 @@
             :style="`--tc:${t.color}`"
             @click="activeGuestTab = t.key"
           >{{ t.icon }} {{ t.label }}</button>
+        </div>
+
+        <div class="d-flex justify-content-center align-items-center gap-2 mb-5">
+          <button class="btn btn-sm btn-outline-secondary" @click="prevGuestTab">Prev</button>
+          <button class="btn btn-sm" :class="guestAutoplay ? 'btn-dark' : 'btn-outline-dark'" @click="toggleGuestAutoplay">
+            {{ guestAutoplay ? 'Autoplay On' : 'Autoplay Off' }}
+          </button>
+          <button class="btn btn-sm btn-outline-secondary" @click="nextGuestTab">Next</button>
+          <span class="small text-muted" v-if="guestAutoplay">Next in {{ guestCountdown }}s</span>
         </div>
 
         <!-- Role Cards -->
@@ -195,7 +208,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
 import { authToken, authRole, authUserName } from '../services/auth';
 import { platformConfig } from '../services/platform';
 import PhaseBadge from '../components/PhaseBadge.vue';
@@ -512,6 +525,64 @@ const activeGuestCards = computed(() => guestPreviewData[activeGuestTab.value] |
 const activeGuestColor = computed(() => guestTabs.find(t => t.key === activeGuestTab.value)?.color || '#2563eb');
 const activeGuestColorAlpha = computed(() => guestTabs.find(t => t.key === activeGuestTab.value)?.colorAlpha || 'rgba(37,99,235,0.09)');
 const activeGuestLabel = computed(() => (guestTabs.find(t => t.key === activeGuestTab.value)?.label || 'Brand').replace('For ', ''));
+
+const guestAutoplay = ref(true);
+const guestCountdown = ref(6);
+let guestInterval = null;
+
+function nextGuestTab() {
+  const idx = guestTabs.findIndex((t) => t.key === activeGuestTab.value);
+  const next = (idx + 1) % guestTabs.length;
+  activeGuestTab.value = guestTabs[next].key;
+  guestCountdown.value = 6;
+}
+
+function prevGuestTab() {
+  const idx = guestTabs.findIndex((t) => t.key === activeGuestTab.value);
+  const prev = (idx - 1 + guestTabs.length) % guestTabs.length;
+  activeGuestTab.value = guestTabs[prev].key;
+  guestCountdown.value = 6;
+}
+
+function startGuestRotation() {
+  stopGuestRotation();
+  if (!guestAutoplay.value) return;
+  guestInterval = window.setInterval(() => {
+    guestCountdown.value -= 1;
+    if (guestCountdown.value <= 0) {
+      nextGuestTab();
+    }
+  }, 1000);
+}
+
+function stopGuestRotation() {
+  if (guestInterval) {
+    window.clearInterval(guestInterval);
+    guestInterval = null;
+  }
+}
+
+function pauseGuestRotation() {
+  stopGuestRotation();
+}
+
+function resumeGuestRotation() {
+  startGuestRotation();
+}
+
+function toggleGuestAutoplay() {
+  guestAutoplay.value = !guestAutoplay.value;
+  guestCountdown.value = 6;
+  startGuestRotation();
+}
+
+onMounted(() => {
+  startGuestRotation();
+});
+
+onBeforeUnmount(() => {
+  stopGuestRotation();
+});
 </script>
 
 <style scoped>
