@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InfluencerMatch.API.Controllers
@@ -15,6 +16,7 @@ namespace InfluencerMatch.API.Controllers
         private readonly ICreatorPricingService     _pricingService;
         private readonly IViralContentService       _viralService;
         private readonly IYouTubeVideoAnalysisService _videoAnalysisService;
+        private readonly IYouTubeCreatorImportService _youTubeImportService;
 
         public InnovativeFeaturesController(
             IRisingCreatorService      risingService,
@@ -22,7 +24,8 @@ namespace InfluencerMatch.API.Controllers
             ICampaignPredictionService predictionService,
             ICreatorPricingService     pricingService,
             IViralContentService       viralService,
-            IYouTubeVideoAnalysisService videoAnalysisService)
+            IYouTubeVideoAnalysisService videoAnalysisService,
+            IYouTubeCreatorImportService youTubeImportService)
         {
             _risingService      = risingService;
             _opportunityService = opportunityService;
@@ -30,6 +33,7 @@ namespace InfluencerMatch.API.Controllers
             _pricingService     = pricingService;
             _viralService       = viralService;
             _videoAnalysisService = videoAnalysisService;
+            _youTubeImportService = youTubeImportService;
         }
 
         // ── Feature 1: Rising Creator Detection ──────────────────────────────
@@ -121,6 +125,32 @@ namespace InfluencerMatch.API.Controllers
 
             var result = await _videoAnalysisService.AnalyzeLatestVideoAsync(request);
             return Ok(result);
+        }
+
+        // ── Feature: Creator Intelligence YouTube Preview (non-persistent) ───
+        // POST /api/brands/creator-intelligence/youtube-preview
+
+        [HttpPost("brands/creator-intelligence/youtube-preview")]
+        [Authorize(Roles = "Brand,Agency,Individual,CreatorManager,SuperAdmin")]
+        public async Task<IActionResult> PreviewYouTubeCreators([FromBody] YouTubeImportRequestDto request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Query))
+                return BadRequest(new { error = "Query is required." });
+
+            try
+            {
+                request.PersistResults = false;
+                request.IncludeAiInsights = true;
+                request.MaxResults = request.MaxResults <= 0 ? 12 : request.MaxResults;
+                request.MaxVideosPerChannel = request.MaxVideosPerChannel <= 0 ? 8 : request.MaxVideosPerChannel;
+
+                var result = await _youTubeImportService.ImportAsync(request);
+                return Ok(result);
+            }
+            catch (System.InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
     }
 }

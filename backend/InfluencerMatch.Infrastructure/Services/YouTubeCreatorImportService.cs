@@ -36,6 +36,7 @@ namespace InfluencerMatch.Infrastructure.Services
         private readonly ApplicationDbContext _db;
         private readonly IHttpClientFactory   _http;
         private readonly IYouTubeQuotaTracker _quota;
+        private readonly IGroqLlmService      _groq;
         private readonly ILogger<YouTubeCreatorImportService> _log;
         private readonly string? _apiKey;
 
@@ -63,12 +64,14 @@ namespace InfluencerMatch.Infrastructure.Services
             ApplicationDbContext db,
             IHttpClientFactory   http,
             IYouTubeQuotaTracker quota,
+            IGroqLlmService      groq,
             ILogger<YouTubeCreatorImportService> log,
             IConfiguration config)
         {
             _db     = db;
             _http   = http;
             _quota  = quota;
+            _groq   = groq;
             _log    = log;
             _apiKey = config["YouTube:ApiKey"]
                    ?? config["YouTube__ApiKey"]
@@ -83,6 +86,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 throw new InvalidOperationException("YouTube:ApiKey is not configured.");
 
             var maxResults = Math.Clamp(request.MaxResults, 1, 50);
+            var persistResults = request.PersistResults;
             var result     = new YouTubeImportResultDto { Timestamp = DateTime.UtcNow };
 
             // ── 1. Search for channels ─────────────────────────────────────────
@@ -120,81 +124,96 @@ namespace InfluencerMatch.Infrastructure.Services
                     ThumbnailUrl    = ch.ThumbnailUrl,
                     EngagementRate  = ch.EngagementRate,
                     AvgViews        = ch.AvgViews,
+                    MlFitScore      = ComputeMlFitScore(ch, request),
+                    AiSignals       = BuildAiSignals(ch),
                 };
+
+                if (request.IncludeAiInsights)
+                {
+                    row.AiBrief = await BuildAiBriefAsync(ch, row, request, ct);
+                }
 
                 try
                 {
-                    var category = request.Category ?? ch.DefaultCategory ?? "General";
-                    var existing = await _db.Creators
-                        .FirstOrDefaultAsync(c => c.ChannelId == ch.ChannelId, ct);
-
-                    Creator creator;
-                    var isNew = false;
-                    if (existing == null)
+                    if (persistResults)
                     {
-                        creator = new Creator { ChannelId = ch.ChannelId, CreatedAt = DateTime.UtcNow };
-                        _db.Creators.Add(creator);
-                        isNew = true;
+                        var category = request.Category ?? ch.DefaultCategory ?? "General";
+                        var existing = await _db.Creators
+                            .FirstOrDefaultAsync(c => c.ChannelId == ch.ChannelId, ct);
+
+                        Creator creator;
+                        var isNew = false;
+                        if (existing == null)
+                        {
+                            creator = new Creator { ChannelId = ch.ChannelId, CreatedAt = DateTime.UtcNow };
+                            _db.Creators.Add(creator);
+                            isNew = true;
+                        }
+                        else
+                        {
+                            creator = existing;
+                        }
+
+                        // ── Populate all fields ──────────────────────────────────
+                        creator.ChannelName     = ch.Title;
+                        creator.Description     = Trunc(ch.Description, 500);
+                        creator.Subscribers     = ch.Subscribers;
+                        creator.TotalViews      = ch.TotalViews;
+                        creator.VideoCount      = ch.VideoCount;
+                        creator.Country         = ch.Country ?? request.CountryCode ?? creator.Country;
+                        creator.Category        = category;
+                        creator.CreatorTier     = Creator.ComputeTier(ch.Subscribers);
+                        creator.IsSmallCreator  = Creator.ComputeIsSmall(ch.Subscribers);
+                        creator.ThumbnailUrl    = ch.ThumbnailUrl;
+                        creator.BannerUrl       = ch.BannerUrl;
+                        creator.ChannelUrl      = ch.ChannelUrl;
+                        creator.PublishedAt     = ch.PublishedAt;
+                        creator.ChannelTags     = ch.ChannelTags;
+                        creator.PublicEmail     = ch.PublicEmail;
+                        creator.InstagramHandle = ch.InstagramHandle;
+                        creator.TwitterHandle   = ch.TwitterHandle;
+                        creator.AvgViews        = ch.AvgViews;
+                        creator.AvgLikes        = ch.AvgLikes;
+                        creator.AvgComments     = ch.AvgComments;
+                        creator.EngagementRate  = ch.EngagementRate;
+                        creator.LastRefreshedAt = DateTime.UtcNow;
+                        creator.UpdatedAt       = DateTime.UtcNow;
+
+                        // Save now to get CreatorId for video FK
+                        await _db.SaveChangesAsync(ct);
+
+                        // ── Upsert recent videos ─────────────────────────────────
+                        foreach (var v in videos)
+                        {
+                            var ev = await _db.Videos.FirstOrDefaultAsync(x => x.VideoId == v.VideoId, ct);
+                            if (ev == null)
+                            {
+                                ev = new Video { VideoId = v.VideoId, CreatorId = creator.CreatorId };
+                                _db.Videos.Add(ev);
+                            }
+                            ev.Title          = v.Title;
+                            ev.ThumbnailUrl   = v.ThumbnailUrl;
+                            ev.ViewCount      = v.ViewCount;
+                            ev.LikeCount      = v.LikeCount;
+                            ev.CommentCount   = v.CommentCount;
+                            ev.PublishedAt    = v.PublishedAt;
+                            ev.FetchedAt      = DateTime.UtcNow;
+                            ev.Tags           = v.Tags;
+                            ev.Description    = v.Description;
+                            ev.EngagementRate = v.EngagementRate;
+                        }
+
+                        await _db.SaveChangesAsync(ct);
+
+                        row.Status = isNew ? "new" : "updated";
+                        if (isNew) result.Imported++;
+                        else result.Updated++;
                     }
                     else
                     {
-                        creator = existing;
+                        row.Status = "preview";
+                        result.Previewed++;
                     }
-
-                    // ── Populate all fields ──────────────────────────────────
-                    creator.ChannelName     = ch.Title;
-                    creator.Description     = Trunc(ch.Description, 500);
-                    creator.Subscribers     = ch.Subscribers;
-                    creator.TotalViews      = ch.TotalViews;
-                    creator.VideoCount      = ch.VideoCount;
-                    creator.Country         = ch.Country ?? request.CountryCode ?? creator.Country;
-                    creator.Category        = category;
-                    creator.CreatorTier     = Creator.ComputeTier(ch.Subscribers);
-                    creator.IsSmallCreator  = Creator.ComputeIsSmall(ch.Subscribers);
-                    creator.ThumbnailUrl    = ch.ThumbnailUrl;
-                    creator.BannerUrl       = ch.BannerUrl;
-                    creator.ChannelUrl      = ch.ChannelUrl;
-                    creator.PublishedAt     = ch.PublishedAt;
-                    creator.ChannelTags     = ch.ChannelTags;
-                    creator.PublicEmail     = ch.PublicEmail;
-                    creator.InstagramHandle = ch.InstagramHandle;
-                    creator.TwitterHandle   = ch.TwitterHandle;
-                    creator.AvgViews        = ch.AvgViews;
-                    creator.AvgLikes        = ch.AvgLikes;
-                    creator.AvgComments     = ch.AvgComments;
-                    creator.EngagementRate  = ch.EngagementRate;
-                    creator.LastRefreshedAt = DateTime.UtcNow;
-                    creator.UpdatedAt       = DateTime.UtcNow;
-
-                    // Save now to get CreatorId for video FK
-                    await _db.SaveChangesAsync(ct);
-
-                    // ── Upsert recent videos ─────────────────────────────────
-                    foreach (var v in videos)
-                    {
-                        var ev = await _db.Videos.FirstOrDefaultAsync(x => x.VideoId == v.VideoId, ct);
-                        if (ev == null)
-                        {
-                            ev = new Video { VideoId = v.VideoId, CreatorId = creator.CreatorId };
-                            _db.Videos.Add(ev);
-                        }
-                        ev.Title          = v.Title;
-                        ev.ThumbnailUrl   = v.ThumbnailUrl;
-                        ev.ViewCount      = v.ViewCount;
-                        ev.LikeCount      = v.LikeCount;
-                        ev.CommentCount   = v.CommentCount;
-                        ev.PublishedAt    = v.PublishedAt;
-                        ev.FetchedAt      = DateTime.UtcNow;
-                        ev.Tags           = v.Tags;
-                        ev.Description    = v.Description;
-                        ev.EngagementRate = v.EngagementRate;
-                    }
-
-                    await _db.SaveChangesAsync(ct);
-
-                    row.Status = isNew ? "new" : "updated";
-                    if (isNew) result.Imported++;
-                    else result.Updated++;
                 }
                 catch (Exception ex)
                 {
@@ -542,6 +561,80 @@ namespace InfluencerMatch.Infrastructure.Services
             if (t.Contains("music") || t.Contains("song"))                               return "Music";
             if (t.Contains("business") || t.Contains("finance") || t.Contains("money")) return "Finance";
             return null;
+        }
+
+        private static double ComputeMlFitScore(RichChannelDetail ch, YouTubeImportRequestDto request)
+        {
+            var engagementScore = Math.Clamp(ch.EngagementRate / 6.0, 0, 1);
+            var subscriberScore = ch.Subscribers <= 0
+                ? 0
+                : Math.Clamp(Math.Log10(ch.Subscribers + 1) / 7.0, 0, 1);
+            var viewScore = ch.AvgViews <= 0
+                ? 0
+                : Math.Clamp(Math.Log10(ch.AvgViews + 1) / 6.5, 0, 1);
+
+            var contactSignals = 0;
+            if (!string.IsNullOrWhiteSpace(ch.PublicEmail)) contactSignals++;
+            if (!string.IsNullOrWhiteSpace(ch.InstagramHandle)) contactSignals++;
+            if (!string.IsNullOrWhiteSpace(ch.TwitterHandle)) contactSignals++;
+            var contactScore = contactSignals / 3.0;
+
+            var categoryBoost = 0.0;
+            var requestedCategory = (request.Category ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(requestedCategory)
+                && string.Equals(requestedCategory, ch.DefaultCategory, StringComparison.OrdinalIgnoreCase))
+            {
+                categoryBoost = 0.12;
+            }
+
+            var weighted = (engagementScore * 0.38)
+                + (subscriberScore * 0.22)
+                + (viewScore * 0.22)
+                + (contactScore * 0.18)
+                + categoryBoost;
+
+            return Math.Round(Math.Clamp(weighted * 100, 0, 100), 1);
+        }
+
+        private static List<string> BuildAiSignals(RichChannelDetail ch)
+        {
+            var signals = new List<string>();
+            signals.Add(ch.Subscribers >= 1_000_000 ? "Macro reach" : ch.Subscribers >= 100_000 ? "Scalable reach" : "Emerging audience");
+            signals.Add(ch.EngagementRate >= 4 ? "High engagement" : ch.EngagementRate >= 2 ? "Steady engagement" : "Engagement needs review");
+            signals.Add(!string.IsNullOrWhiteSpace(ch.PublicEmail) ? "Email contact available" : "Email not visible");
+            if (!string.IsNullOrWhiteSpace(ch.DefaultCategory))
+            {
+                signals.Add($"Category: {ch.DefaultCategory}");
+            }
+            return signals;
+        }
+
+        private async Task<string?> BuildAiBriefAsync(
+            RichChannelDetail ch,
+            YouTubeImportResultRow row,
+            YouTubeImportRequestDto request,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var category = request.Category ?? ch.DefaultCategory ?? "General";
+            var fallback = $"{ch.Title} looks relevant for {category} with {ch.Subscribers:N0} subscribers and {ch.EngagementRate:F2}% engagement.";
+
+            var prompt =
+                $"Query: {request.Query}. "
+                + $"Requested category: {category}. "
+                + $"Creator: {ch.Title}. "
+                + $"Subscribers: {ch.Subscribers:N0}. Avg views: {ch.AvgViews:N0}. Engagement: {ch.EngagementRate:F2}%. "
+                + $"Country: {ch.Country ?? request.CountryCode ?? "Unknown"}. "
+                + $"ML fit score: {row.MlFitScore:F1}/100. "
+                + "Write exactly one concise sentence (max 24 words) describing campaign fit and one caution if any.";
+
+            var generated = await _groq.GenerateTextAsync(
+                "You are a brand-side creator intelligence copilot. Output one sentence only.",
+                prompt,
+                maxTokens: 80);
+
+            return string.IsNullOrWhiteSpace(generated) ? fallback : generated.Trim();
         }
 
         // ── Inner data transfer classes ──────────────────────────────────────

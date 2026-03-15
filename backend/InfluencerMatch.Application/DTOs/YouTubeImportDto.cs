@@ -20,6 +20,17 @@ namespace InfluencerMatch.Application.DTOs
 
         /// <summary>How many recent videos to fetch per channel for analytics (3–10). Default 10.</summary>
         public int MaxVideosPerChannel { get; set; } = 10;
+
+        /// <summary>
+        /// When true (default), importer upserts rows into Creators/Videos tables.
+        /// Set false for non-persistent preview runs.
+        /// </summary>
+        public bool PersistResults { get; set; } = true;
+
+        /// <summary>
+        /// When true, generates AI-friendly summaries/signals for each row.
+        /// </summary>
+        public bool IncludeAiInsights { get; set; } = true;
     }
 
     /// <summary>One imported / updated channel row in the response.</summary>
@@ -38,6 +49,9 @@ namespace InfluencerMatch.Application.DTOs
         public string? ThumbnailUrl    { get; set; }
         public double  EngagementRate  { get; set; }
         public double  AvgViews        { get; set; }
+        public double  MlFitScore      { get; set; }
+        public List<string> AiSignals  { get; set; } = new();
+        public string? AiBrief         { get; set; }
         public string? Error           { get; set; }
         public string  Status          { get; set; } = string.Empty; // "new" | "updated" | "skipped"
     }
@@ -48,6 +62,7 @@ namespace InfluencerMatch.Application.DTOs
         public int      Imported   { get; set; }
         public int      Updated    { get; set; }
         public int      Skipped    { get; set; }
+        public int      Previewed  { get; set; }
         public int      QuotaUsed  { get; set; }
         public DateTime Timestamp  { get; set; }
         public List<YouTubeImportResultRow> Rows { get; set; } = new();

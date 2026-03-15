@@ -66,6 +66,105 @@
       </div>
     </div>
 
+    <div class="card border-0 shadow-sm mb-4 panel-card yt-discovery-card">
+      <div class="card-body p-3 p-lg-4">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+          <div>
+            <div class="eyebrow mb-2">LLM + ML Discovery</div>
+            <h5 class="fw-semibold mb-1">YouTube Creator Discovery Lab</h5>
+            <div class="small text-muted">Uses the SuperAdmin importer logic in preview mode only. No creators are persisted from this search.</div>
+          </div>
+          <span class="badge text-bg-light border">Live API preview</span>
+        </div>
+
+        <div class="row g-2 align-items-end mb-2">
+          <div class="col-lg-5">
+            <label class="form-label fw-semibold small">Search Query</label>
+            <input
+              v-model.trim="ytPreviewForm.query"
+              class="form-control form-control-sm"
+              placeholder="e.g. fintech creators india, tech hindi smartphone review"
+              @keyup.enter="runYouTubePreview"
+            />
+          </div>
+          <div class="col-lg-2 col-md-4">
+            <label class="form-label fw-semibold small">Country</label>
+            <input v-model.trim="ytPreviewForm.countryCode" class="form-control form-control-sm" maxlength="2" placeholder="IN" />
+          </div>
+          <div class="col-lg-2 col-md-4">
+            <label class="form-label fw-semibold small">Category</label>
+            <select v-model="ytPreviewForm.category" class="form-select form-select-sm">
+              <option value="">Auto</option>
+              <option v-for="cat in categories" :key="`yt-cat-${cat}`" :value="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="col-lg-1 col-md-4">
+            <label class="form-label fw-semibold small">Top</label>
+            <select v-model.number="ytPreviewForm.maxResults" class="form-select form-select-sm">
+              <option :value="6">6</option>
+              <option :value="10">10</option>
+              <option :value="12">12</option>
+              <option :value="20">20</option>
+            </select>
+          </div>
+          <div class="col-lg-2 d-grid">
+            <button class="btn btn-sm btn-primary" @click="runYouTubePreview" :disabled="ytPreviewLoading || !ytPreviewForm.query">
+              <span v-if="ytPreviewLoading" class="spinner-border spinner-border-sm me-1"></span>
+              Run AI Discovery
+            </button>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button v-for="preset in ytPresets" :key="preset.label" class="btn btn-outline-secondary btn-sm" @click="applyYtPreset(preset)">
+            {{ preset.label }}
+          </button>
+        </div>
+
+        <div v-if="ytPreviewError" class="alert alert-warning py-2 mb-3">{{ ytPreviewError }}</div>
+
+        <div v-if="ytPreviewResult" class="d-flex flex-wrap gap-2 align-items-center small text-muted mb-3">
+          <span class="badge text-bg-success">Previewed {{ ytPreviewResult.previewed || ytPreviewRows.length }}</span>
+          <span>Quota used today: {{ ytPreviewResult.quotaUsed }}/9000</span>
+          <span>Timestamp: {{ formatDate(ytPreviewResult.timestamp) }}</span>
+        </div>
+
+        <div v-if="ytPreviewRows.length" class="row g-3">
+          <div class="col-xl-4 col-md-6" v-for="row in ytPreviewRows" :key="row.channelId">
+            <article class="yt-preview-item h-100">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <img v-if="row.thumbnailUrl" :src="row.thumbnailUrl" alt="thumb" class="yt-preview-thumb" />
+                <div v-else class="yt-preview-thumb placeholder-thumb">YT</div>
+                <div class="min-w-0">
+                  <div class="fw-semibold text-truncate">{{ row.channelName }}</div>
+                  <div class="small text-muted text-truncate">{{ row.category || 'General' }} · {{ row.country || ytPreviewForm.countryCode || 'Global' }}</div>
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge text-bg-light border">{{ compact(row.subscribers) }} subs</span>
+                <span class="badge text-bg-light border">{{ Number(row.engagementRate || 0).toFixed(2) }}% ER</span>
+                <span class="badge" :class="previewScoreBadge(row.mlFitScore)">ML Fit {{ Math.round(Number(row.mlFitScore || 0)) }}</span>
+              </div>
+
+              <p class="small mb-2 yt-ai-brief">{{ row.aiBrief || 'AI brief unavailable for this preview row.' }}</p>
+
+              <div class="d-flex flex-wrap gap-1 mb-2" v-if="row.aiSignals?.length">
+                <span v-for="signal in row.aiSignals.slice(0, 3)" :key="`${row.channelId}-${signal}`" class="badge rounded-pill text-bg-light border">
+                  {{ signal }}
+                </span>
+              </div>
+
+              <div class="d-flex gap-2 mt-auto">
+                <button class="btn btn-sm btn-outline-primary" @click="applyDiscoveryToSearch(row)">Use in shortlist</button>
+                <a class="btn btn-sm btn-outline-dark" :href="`https://youtube.com/channel/${row.channelId}`" target="_blank" rel="noopener noreferrer">Open</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="row g-3 mb-4" v-if="shortlistedMatches.length">
       <div class="col-6 col-lg-3">
         <div class="card border-0 shadow-sm panel-card stat-card">
@@ -479,6 +578,21 @@ const selectedMatch = ref(null);
 const detail = ref(null);
 const pinnedCreators = ref([]);
 const campaignContext = ref(null);
+const ytPreviewLoading = ref(false);
+const ytPreviewError = ref('');
+const ytPreviewResult = ref(null);
+const ytPreviewForm = ref({
+  query: '',
+  countryCode: 'IN',
+  category: '',
+  maxResults: 10
+});
+const ytPresets = [
+  { label: 'Tech India', query: 'tech gadgets smartphone review hindi india', countryCode: 'IN', category: 'Tech' },
+  { label: 'Finance India', query: 'personal finance investing india hindi', countryCode: 'IN', category: 'Finance' },
+  { label: 'Beauty India', query: 'beauty skincare makeup hindi india', countryCode: 'IN', category: 'Beauty' },
+  { label: 'Gaming India', query: 'gaming esports streamer india', countryCode: 'IN', category: 'Gaming' }
+];
 
 const campaignBudgetInr = computed(() => {
   const value = Number(campaignContext.value?.budget || 0);
@@ -513,6 +627,10 @@ const avgInrPriceLabel = computed(() => {
 });
 
 const risingCount = computed(() => shortlistedMatches.value.filter((creator) => creator.growthCategory === 'Rising').length);
+const ytPreviewRows = computed(() => {
+  const rows = Array.isArray(ytPreviewResult.value?.rows) ? ytPreviewResult.value.rows : [];
+  return [...rows].sort((a, b) => Number(b?.mlFitScore || 0) - Number(a?.mlFitScore || 0));
+});
 
 const detailData = computed(() => ({
   ...(selectedMatch.value || {}),
@@ -641,6 +759,44 @@ async function loadMatches() {
   }
 }
 
+async function runYouTubePreview() {
+  if (!ytPreviewForm.value.query) return;
+
+  ytPreviewLoading.value = true;
+  ytPreviewError.value = '';
+  ytPreviewResult.value = null;
+
+  try {
+    const payload = {
+      query: ytPreviewForm.value.query,
+      countryCode: (ytPreviewForm.value.countryCode || '').toUpperCase() || null,
+      category: ytPreviewForm.value.category || null,
+      maxResults: ytPreviewForm.value.maxResults,
+      maxVideosPerChannel: 8,
+      persistResults: false,
+      includeAiInsights: true
+    };
+    const { data } = await api.post('/brands/creator-intelligence/youtube-preview', payload);
+    ytPreviewResult.value = data;
+  } catch (e) {
+    ytPreviewError.value = e?.userMessage || e?.response?.data?.error || 'Unable to run YouTube AI preview.';
+  } finally {
+    ytPreviewLoading.value = false;
+  }
+}
+
+function applyYtPreset(preset) {
+  ytPreviewForm.value.query = preset.query;
+  ytPreviewForm.value.countryCode = preset.countryCode;
+  ytPreviewForm.value.category = preset.category;
+  ytPreviewForm.value.maxResults = 10;
+  runYouTubePreview();
+}
+
+function applyDiscoveryToSearch(row) {
+  filters.value.search = row.channelName || '';
+}
+
 async function selectCreator(creator) {
   selectedMatch.value = creator;
   await loadCreatorDetail(creator);
@@ -728,6 +884,14 @@ function growthBadgeClass(category) {
   if (category === 'Rising') return 'text-bg-success';
   if (category === 'Declining') return 'text-bg-danger';
   return 'text-bg-primary';
+}
+
+function previewScoreBadge(scoreValue) {
+  const score = Number(scoreValue || 0);
+  if (score >= 78) return 'text-bg-success';
+  if (score >= 58) return 'text-bg-primary';
+  if (score >= 40) return 'text-bg-warning';
+  return 'text-bg-secondary';
 }
 
 function readinessBadgeClass(level) {
@@ -977,6 +1141,46 @@ function estimateAudienceRisk(creator) {
 
 .intelligence-detail-card {
   background: rgba(255, 255, 255, 0.96);
+}
+
+.yt-discovery-card {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.11), transparent 32%),
+    radial-gradient(circle at 100% 10%, rgba(14, 165, 233, 0.12), transparent 28%),
+    #ffffff;
+}
+
+.yt-preview-item {
+  border-radius: 14px;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.95));
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.yt-preview-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.placeholder-thumb {
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.yt-ai-brief {
+  color: #334155;
+  min-height: 2.3rem;
 }
 
 .mini-stat-card,
