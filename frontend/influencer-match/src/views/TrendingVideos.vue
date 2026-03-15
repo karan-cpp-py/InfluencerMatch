@@ -208,11 +208,30 @@ onMounted(load);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
+/* Ensure the card is a column flex container so the content (including buttons)
+   stays inside the card and sticky to the bottom when necessary. */
+.video-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .video-thumb {
   width: 100%;
   aspect-ratio: 16/9;
   object-fit: cover;
   display: block;
+}
+
+/* Prevent the thumbnail wrapper from shrinking and make the content area
+   take the remaining space so action buttons remain inside the card. */
+.video-card .position-relative {
+  flex-shrink: 0;
+}
+
+.video-card .p-2.p-lg-3 {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .thumb-fallback {
