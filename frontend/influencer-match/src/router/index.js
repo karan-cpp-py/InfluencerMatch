@@ -35,11 +35,6 @@ const routes = [
     meta: { requiresAuth: false } // access control handled in the view itself
   },
   {
-    path: '/admin/creators',
-    component: () => import('../views/SuperAdminCreatorsView.vue'),
-    meta: { requiresAuth: false } // access control handled in the view itself
-  },
-  {
     path: '/admin/users',
     component: () => import('../views/SuperAdminUsersView.vue'),
     meta: { requiresAuth: false }

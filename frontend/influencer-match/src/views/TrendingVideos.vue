@@ -88,8 +88,8 @@
                 <div class="progress-bar bg-danger" :style="{ width: pct(v.viralScore) }"></div>
               </div>
 
-              <div class="d-flex gap-2 mt-auto">
-                <button class="btn btn-sm btn-outline-dark flex-grow-1" @click="analyzeVideo(v)">
+              <div class="d-grid gap-2 mt-auto">
+                <button class="btn btn-sm btn-dark" @click="analyzeVideo(v)">
                   Analyze with AI
                 </button>
                 <button
@@ -100,7 +100,7 @@
                 >
                   View Profile
                 </button>
-                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Watch</a>
+                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Watch on YouTube</a>
               </div>
             </div>
           </article>

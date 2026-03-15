@@ -9,7 +9,6 @@
         <p class="mb-0 text-light-emphasis">Manually trigger YouTube jobs and monitor platform health in one place.</p>
       </div>
       <div class="d-flex gap-2">
-        <router-link to="/admin/creators" class="btn btn-outline-light btn-sm fw-semibold">Manage Creators</router-link>
         <router-link to="/admin/users" class="btn btn-outline-light btn-sm fw-semibold">Manage Users</router-link>
         <button class="btn btn-light btn-sm fw-semibold" @click="refreshDashboard">Refresh Dashboard</button>
       </div>

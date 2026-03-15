@@ -3,7 +3,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div>
         <h3 class="fw-bold mb-1">Manage Platform Users</h3>
-        <p class="text-muted mb-0">View and manage all account types from one place.</p>
+        <p class="text-muted mb-0">View and manage Creator, Brand, and Agency users from one place.</p>
       </div>
       <router-link to="/admin" class="btn btn-outline-secondary btn-sm">Back to Admin</router-link>
     </div>
@@ -80,9 +80,15 @@
                 <td class="small">{{ u.authProvider || 'password' }}</td>
                 <td class="small text-muted">{{ fmtDate(u.createdAt) }}</td>
                 <td>
-                  <button class="btn btn-outline-primary btn-sm" :disabled="savingUserId === u.userId" @click="saveUser(u)">
-                    {{ savingUserId === u.userId ? 'Saving...' : 'Save' }}
-                  </button>
+                  <div class="d-flex gap-1 flex-wrap">
+                    <button class="btn btn-outline-primary btn-sm" :disabled="savingUserId === u.userId" @click="saveUser(u)">
+                      {{ savingUserId === u.userId ? 'Saving...' : 'Save' }}
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" @click="viewUser(u)">View</button>
+                    <button class="btn btn-outline-danger btn-sm" :disabled="deletingUserId === u.userId || isLastSuperAdmin(u)" @click="deleteUser(u)">
+                      {{ deletingUserId === u.userId ? 'Deleting...' : 'Delete' }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -95,6 +101,30 @@
           <button class="btn btn-outline-secondary btn-sm" :disabled="page <= 1" @click="loadUsers(page - 1)">Prev</button>
           <span class="small align-self-center px-2">Page {{ page }}</span>
           <button class="btn btn-outline-secondary btn-sm" :disabled="page * pageSize >= total" @click="loadUsers(page + 1)">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="selectedUser" class="modal-backdrop show" style="display:block; background:rgba(15,23,42,0.45)">
+      <div class="modal d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">User Details</h5>
+              <button type="button" class="btn-close" @click="selectedUser = null"></button>
+            </div>
+            <div class="modal-body">
+              <div><strong>Name:</strong> {{ selectedUser.name }}</div>
+              <div><strong>Email:</strong> {{ selectedUser.email }}</div>
+              <div><strong>Role:</strong> {{ selectedUser.role }}</div>
+              <div><strong>Customer Type:</strong> {{ selectedUser.customerType }}</div>
+              <div><strong>Verified:</strong> {{ selectedUser.emailVerified ? 'Yes' : 'No' }}</div>
+              <div><strong>Country:</strong> {{ selectedUser.country || '—' }}</div>
+              <div><strong>Company:</strong> {{ selectedUser.companyName || '—' }}</div>
+              <div><strong>Auth Provider:</strong> {{ selectedUser.authProvider || 'password' }}</div>
+              <div><strong>Created:</strong> {{ fmtDate(selectedUser.createdAt) }}</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -112,9 +142,11 @@ const pageSize = 30;
 const loading = ref(false);
 const error = ref('');
 const savingUserId = ref(null);
+const deletingUserId = ref(null);
+const selectedUser = ref(null);
 
-const roleOptions = ['Brand', 'Agency', 'Creator', 'CreatorManager', 'Individual', 'SuperAdmin'];
-const customerTypeOptions = ['Brand', 'Agency', 'Creator', 'CreatorManager', 'Individual', 'Internal'];
+const roleOptions = ['Brand', 'Agency', 'Creator', 'SuperAdmin'];
+const customerTypeOptions = ['Brand', 'Agency', 'Creator', 'Internal'];
 
 const filters = ref({
   query: '',
@@ -170,6 +202,33 @@ async function saveUser(user) {
     error.value = e?.userMessage || e?.response?.data?.error || 'Failed to update user.';
   } finally {
     savingUserId.value = null;
+  }
+}
+
+function viewUser(user) {
+  selectedUser.value = user;
+}
+
+function isLastSuperAdmin(user) {
+  if (user.role !== 'SuperAdmin') return false;
+  const adminCount = users.value.filter((u) => u.role === 'SuperAdmin').length;
+  return adminCount <= 1;
+}
+
+async function deleteUser(user) {
+  if (!confirm(`Delete user ${user.email}? This cannot be undone.`)) return;
+  deletingUserId.value = user.userId;
+  error.value = '';
+  try {
+    await api.delete(`/admin/users/${user.userId}`);
+    await loadUsers(page.value);
+    if (selectedUser.value?.userId === user.userId) {
+      selectedUser.value = null;
+    }
+  } catch (e) {
+    error.value = e?.userMessage || e?.response?.data?.error || 'Failed to delete user.';
+  } finally {
+    deletingUserId.value = null;
   }
 }
 

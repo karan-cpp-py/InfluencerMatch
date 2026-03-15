@@ -36,6 +36,9 @@ namespace InfluencerMatch.API.Controllers
     [Route("api/admin")]
     public class SuperAdminController : ControllerBase
     {
+        private static readonly string[] ProductRoles = new[] { "Creator", "Brand", "Agency", "SuperAdmin" };
+        private static readonly string[] ProductCustomerTypes = new[] { "Creator", "Brand", "Agency", "Internal" };
+
         private readonly ApplicationDbContext       _db;
         private readonly ICreatorAnalyticsService   _analytics;
         private readonly ILanguageDetectionService  _language;
@@ -168,6 +171,7 @@ namespace InfluencerMatch.API.Controllers
             pageSize = Math.Clamp(pageSize, 1, 100);
 
             var usersQuery = _db.Users.AsNoTracking().AsQueryable();
+            usersQuery = usersQuery.Where(u => ProductRoles.Contains(u.Role));
 
             if (!string.IsNullOrWhiteSpace(query))
             {
@@ -179,11 +183,21 @@ namespace InfluencerMatch.API.Controllers
 
             if (!string.IsNullOrWhiteSpace(role))
             {
+                if (!ProductRoles.Contains(role))
+                {
+                    return Ok(new { page, pageSize, total = 0, items = Array.Empty<object>() });
+                }
+
                 usersQuery = usersQuery.Where(u => u.Role == role);
             }
 
             if (!string.IsNullOrWhiteSpace(customerType))
             {
+                if (!ProductCustomerTypes.Contains(customerType))
+                {
+                    return Ok(new { page, pageSize, total = 0, items = Array.Empty<object>() });
+                }
+
                 usersQuery = usersQuery.Where(u => u.CustomerType == customerType);
             }
 
@@ -235,11 +249,21 @@ namespace InfluencerMatch.API.Controllers
 
             if (!string.IsNullOrWhiteSpace(dto.Role))
             {
+                if (!ProductRoles.Contains(dto.Role.Trim()))
+                {
+                    return BadRequest(new { error = "Only Creator, Brand, Agency, or SuperAdmin roles are allowed." });
+                }
+
                 user.Role = dto.Role.Trim();
             }
 
             if (!string.IsNullOrWhiteSpace(dto.CustomerType))
             {
+                if (!ProductCustomerTypes.Contains(dto.CustomerType.Trim()))
+                {
+                    return BadRequest(new { error = "Only Creator, Brand, Agency, or Internal customer types are allowed." });
+                }
+
                 user.CustomerType = dto.CustomerType.Trim();
             }
 
@@ -260,6 +284,30 @@ namespace InfluencerMatch.API.Controllers
                 user.CustomerType,
                 user.EmailVerified
             });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpDelete("users/{userId:int}")]
+        public async Task<IActionResult> DeleteUserBySuperAdmin(int userId)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+            {
+                return NotFound(new { error = "User not found." });
+            }
+
+            if (string.Equals(user.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                var adminCount = await _db.Users.CountAsync(u => u.Role == "SuperAdmin");
+                if (adminCount <= 1)
+                {
+                    return BadRequest(new { error = "Cannot delete the last SuperAdmin user." });
+                }
+            }
+
+            _db.Users.Remove(user);
+            await _db.SaveChangesAsync();
+            return Ok(new { deleted = true, userId });
         }
 
         [Authorize(Roles = "SuperAdmin")]
