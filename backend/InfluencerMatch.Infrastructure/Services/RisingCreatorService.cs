@@ -18,17 +18,17 @@ namespace InfluencerMatch.Infrastructure.Services
     /// GrowthRate = (SubscribersNow − Subscribers30DaysAgo) / Subscribers30DaysAgo
     ///
     /// Categorisation thresholds:
-    ///   Rising   → rate ≥ 0.05  (5 %+ monthly)
-    ///   Stable   → rate ≥ 0.00
-    ///   Declining → rate < 0.00
+    ///   Rising    → rate ≥ 0.05  (5 %+ monthly)
+    ///   Stable    → -0.02 < rate < 0.05
+    ///   Declining → rate ≤ -0.02
     /// </summary>
     public class RisingCreatorService : IRisingCreatorService
     {
         private readonly ApplicationDbContext _db;
         private readonly ILogger<RisingCreatorService> _logger;
 
-        private const double RisingThreshold   =  0.05;   // 5 %
-        private const double DecliningThreshold = 0.00;
+        private const double RisingThreshold = 0.05;
+        private const double DecliningThreshold = -0.02;
 
         public RisingCreatorService(ApplicationDbContext db, ILogger<RisingCreatorService> logger)
         {
@@ -55,12 +55,8 @@ namespace InfluencerMatch.Infrastructure.Services
                 .GroupBy(g => g.CreatorId)
                 .ToDictionary(g => g.Key, g => g.OrderBy(s => s.RecordedAt).ToList());
 
-            // Check if all snapshots are clustered within 7 days (dev/demo data scenario)
-            DateTime? globalMin = allSnapshots.Values.SelectMany(s => s).Select(s => s.RecordedAt).DefaultIfEmpty().Min();
-            DateTime? globalMax = allSnapshots.Values.SelectMany(s => s).Select(s => s.RecordedAt).DefaultIfEmpty().Max();
-            bool shortSpan = globalMin == null || (globalMax!.Value - globalMin!.Value).TotalDays < 7;
-
-            // 2. Compute a raw "growth proxy" for every creator
+            // 2. Compute monthly growth rate per creator.
+            // If history is weak/flat, fall back to a momentum proxy from engagement + avg views.
             var rawScores = creators.Select(creator =>
             {
                 allSnapshots.TryGetValue(creator.CreatorId, out var snaps);
@@ -69,57 +65,37 @@ namespace InfluencerMatch.Infrastructure.Services
                 long   delta = 0;
                 long   baseSubs = creator.Subscribers;
 
-                if (!shortSpan && snaps != null && snaps.Count >= 2)
+                if (snaps != null && snaps.Count >= 2)
                 {
-                    // Real multi-week data: use proper growth rate formula
-                    var now_     = snaps.Last().RecordedAt;
-                    var target   = now_.AddDays(-30);
-                    var baseline = snaps.OrderBy(s => Math.Abs((s.RecordedAt - target).TotalDays)).First();
-                    var latest_  = snaps.Last();
-                    if (baseline.GrowthId == latest_.GrowthId) baseline = snaps.First();
+                    var latest = snaps.Last();
+                    var baselineTargetDate = latest.RecordedAt.AddDays(-30);
+                    var baseline = snaps
+                        .OrderBy(s => Math.Abs((s.RecordedAt - baselineTargetDate).TotalDays))
+                        .First();
+                    if (baseline.GrowthId == latest.GrowthId)
+                    {
+                        baseline = snaps.First();
+                    }
 
                     baseSubs = baseline.Subscribers;
-                    delta    = latest_.Subscribers - baseSubs;
-                    double days = Math.Max((latest_.RecordedAt - baseline.RecordedAt).TotalDays, 1);
+                    delta = latest.Subscribers - baseSubs;
+                    double days = Math.Max((latest.RecordedAt - baseline.RecordedAt).TotalDays, 1);
                     rate  = baseSubs > 0 ? delta / (double)baseSubs * (30.0 / days) : 0;
                 }
-                else
+
+                if (Math.Abs(rate) < 0.001)
                 {
-                    // Short-span / demo data: use subscriber count as proxy
-                    // (relative to itself — rate = ln(subscribers+1) normalised)
-                    baseSubs = creator.Subscribers;
-                    rate     = creator.Subscribers > 0
-                        ? Math.Log(creator.Subscribers + 1)   // log scale proxy
-                        : 0;
-                    delta    = 0;
+                    var proxy = ComputeMomentumProxyRate(creator);
+                    rate = proxy;
+
+                    if (delta == 0 && baseSubs > 0)
+                    {
+                        delta = (long)Math.Round(baseSubs * proxy);
+                    }
                 }
 
                 return (creator.CreatorId, rate, delta, baseSubs);
             }).ToList();
-
-            // 3. Assign categories by percentile rank and normalize rates to 0.0–1.0
-            var sorted = rawScores.OrderBy(r => r.rate).ToList();
-            int total  = sorted.Count;
-            var assignments   = new Dictionary<int, string>();
-            var normalizedRate = new Dictionary<int, double>();
-            double minRate = sorted.Count > 0 ? sorted.First().rate  : 0;
-            double maxRate = sorted.Count > 0 ? sorted.Last().rate   : 1;
-            double rateRange = maxRate - minRate;
-
-            for (int i = 0; i < sorted.Count; i++)
-            {
-                double pct = total > 1 ? (double)i / (total - 1) : 0.5;
-                string cat = pct >= 0.80 ? "Rising"
-                           : pct <= 0.20 ? "Declining"
-                           :               "Stable";
-                assignments[sorted[i].CreatorId] = cat;
-
-                // Normalize raw rate to 0.0–1.0 range so UI can display as a percentage
-                double norm = rateRange > 0
-                    ? (sorted[i].rate - minRate) / rateRange
-                    : 0.5;
-                normalizedRate[sorted[i].CreatorId] = norm;
-            }
 
             // 4. Upsert to DB
             foreach (var (creatorId, rate, delta, baseSubs) in rawScores)
@@ -127,7 +103,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 if (ct.IsCancellationRequested) break;
                 try
                 {
-                    await UpsertGrowthScoreAsync(creatorId, normalizedRate[creatorId], assignments[creatorId], delta, baseSubs, ct);
+                    await UpsertGrowthScoreAsync(creatorId, rate, Categorize(rate), delta, baseSubs, ct);
                 }
                 catch (Exception ex)
                 {
@@ -173,7 +149,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
         public async Task<List<RisingCreatorDto>> GetRisingCreatorsAsync(
             int topN = 50,
-            string? growthCategory = "Rising",
+            string? growthCategory = null,
             string? country = null)
         {
             // normalise empty string to null so filters work correctly
@@ -250,11 +226,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 .GroupBy(g => g.CreatorId)
                 .ToDictionary(g => g.Key, g => g.OrderBy(s => s.RecordedAt).ToList());
 
-            // Check if historical data spans ≥7 days
-            var allDates = allSnaps.Values.SelectMany(s => s).Select(s => s.RecordedAt).ToList();
-            bool shortSpan = !allDates.Any() || (allDates.Max() - allDates.Min()).TotalDays < 7;
-
-            // Compute raw proxy rate per creator
+            // Compute monthly growth rate per creator with momentum fallback.
             var raw = creators.Select(creator =>
             {
                 analyticsMap.TryGetValue(creator.CreatorId, out var a);
@@ -264,7 +236,7 @@ namespace InfluencerMatch.Infrastructure.Services
                 long   delta = 0;
                 long   base_ = creator.Subscribers;
 
-                if (!shortSpan && snaps != null && snaps.Count >= 2)
+                if (snaps != null && snaps.Count >= 2)
                 {
                     var oldest = snaps.First();
                     var newest = snaps.Last();
@@ -273,31 +245,18 @@ namespace InfluencerMatch.Infrastructure.Services
                     delta = newest.Subscribers - oldest.Subscribers;
                     rate  = base_ > 0 ? delta / (double)base_ * (30.0 / days) : 0;
                 }
-                else
+
+                if (Math.Abs(rate) < 0.001)
                 {
-                    rate  = creator.Subscribers > 0 ? Math.Log(creator.Subscribers + 1) : 0;
-                    base_ = creator.Subscribers;
+                    rate = ComputeMomentumProxyRate(creator);
+                    if (delta == 0 && base_ > 0)
+                    {
+                        delta = (long)Math.Round(base_ * rate);
+                    }
                 }
 
                 return (creator, a, rate, delta, base_);
             }).ToList();
-
-            // Percentile-based category assignment + normalize rates to 0.0–1.0
-            var sorted = raw.OrderBy(r => r.rate).ToList();
-            int total  = sorted.Count;
-            double minR = sorted.Count > 0 ? sorted.First().rate : 0;
-            double maxR = sorted.Count > 0 ? sorted.Last().rate  : 1;
-            double rng  = maxR - minR;
-
-            var catMap  = new Dictionary<int, string>();
-            var normMap = new Dictionary<int, double>();
-            for (int i = 0; i < sorted.Count; i++)
-            {
-                double pct = total > 1 ? (double)i / (total - 1) : 0.5;
-                string cat = pct >= 0.80 ? "Rising" : pct <= 0.20 ? "Declining" : "Stable";
-                catMap[sorted[i].creator.CreatorId]  = cat;
-                normMap[sorted[i].creator.CreatorId] = rng > 0 ? (sorted[i].rate - minR) / rng : 0.5;
-            }
 
             var results = raw
                 .Select(r => new RisingCreatorDto
@@ -308,8 +267,8 @@ namespace InfluencerMatch.Infrastructure.Services
                     Category        = r.creator.Category   ?? string.Empty,
                     Country         = r.creator.Country    ?? string.Empty,
                     Subscribers     = r.creator.Subscribers,
-                    GrowthRate      = normMap[r.creator.CreatorId],
-                    GrowthCategory  = catMap[r.creator.CreatorId],
+                    GrowthRate      = r.rate,
+                    GrowthCategory  = Categorize(r.rate),
                     SubscriberDelta = r.delta,
                     EngagementRate  = EngagementRateEstimator.EstimateOrStored(
                         r.a?.EngagementRate,
@@ -325,6 +284,26 @@ namespace InfluencerMatch.Infrastructure.Services
                 .ToList();
 
             return results;
+        }
+
+        private static string Categorize(double rate)
+        {
+            if (rate >= RisingThreshold) return "Rising";
+            if (rate <= DecliningThreshold) return "Declining";
+            return "Stable";
+        }
+
+        private static double ComputeMomentumProxyRate(Creator creator)
+        {
+            var engagement = Math.Clamp(creator.EngagementRate, 0, 0.2); // ratio form
+            var avgViews = Math.Max(creator.AvgViews, 0);
+            var viewsPerSub = creator.Subscribers > 0 ? Math.Clamp(avgViews / creator.Subscribers, 0, 2) : 0;
+            var freshnessBoost = creator.LastRefreshedAt.HasValue
+                ? Math.Clamp(1.0 - (DateTime.UtcNow - creator.LastRefreshedAt.Value).TotalDays / 60.0, 0, 1)
+                : 0.35;
+
+            var proxy = (engagement * 0.8) + (viewsPerSub * 0.12) + (freshnessBoost * 0.03);
+            return Math.Clamp(proxy, 0.005, 0.18);
         }
     }
 }

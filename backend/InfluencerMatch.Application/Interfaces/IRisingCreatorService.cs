@@ -23,7 +23,7 @@ namespace InfluencerMatch.Application.Interfaces
         /// </summary>
         Task<List<RisingCreatorDto>> GetRisingCreatorsAsync(
             int topN = 50,
-            string? growthCategory = "Rising",
+            string? growthCategory = null,
             string? country = null);
     }
 }

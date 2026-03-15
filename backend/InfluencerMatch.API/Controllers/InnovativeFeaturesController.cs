@@ -38,7 +38,7 @@ namespace InfluencerMatch.API.Controllers
         [HttpGet("creators/rising")]
         public async Task<IActionResult> GetRisingCreators(
             [FromQuery] int    topN           = 50,
-            [FromQuery] string growthCategory = "Rising",
+            [FromQuery] string? growthCategory = null,
             [FromQuery] string? country       = null)
         {
             var results = await _risingService.GetRisingCreatorsAsync(topN, growthCategory, country);

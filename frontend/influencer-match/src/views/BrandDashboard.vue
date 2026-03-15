@@ -20,7 +20,7 @@
               <form @submit.prevent="submit">
                 <div class="mb-4">
                   <label class="form-label fw-semibold">Budget (USD)</label>
-                  <input type="number" step="0.01" min="0" v-model.number="campaign.budget" class="form-control form-control-lg" placeholder="2500" />
+                  <input type="number" step="0.01" min="1" v-model.number="campaign.budget" class="form-control form-control-lg" placeholder="2500" />
                 </div>
 
                 <div class="mb-4">
@@ -39,6 +39,7 @@
                 <button class="btn btn-primary btn-lg w-100" type="submit">
                   {{ campaign.campaignId ? 'Update and Continue' : 'Create and Find Matches' }}
                 </button>
+                <div v-if="formError" class="alert alert-warning mt-3 mb-0 py-2">{{ formError }}</div>
               </form>
             </div>
           </div>
@@ -80,6 +81,7 @@ import { parseJwt } from '../services/jwt';
 const router = useRouter();
 const route = useRoute();
 const campaign = ref({ budget: 0, category: '', targetLocation: '' });
+const formError = ref('');
 const categoryPresets = ['Technology', 'Fashion', 'Finance', 'Food', 'Gaming', 'Travel'];
 
 onMounted(async () => {
@@ -95,6 +97,25 @@ onMounted(async () => {
 });
 
 async function submit() {
+  formError.value = '';
+
+  const budget = Number(campaign.value.budget || 0);
+  const category = String(campaign.value.category || '').trim();
+  const location = String(campaign.value.targetLocation || '').trim();
+
+  if (!Number.isFinite(budget) || budget < 1) {
+    formError.value = 'Please enter a valid budget greater than 0.';
+    return;
+  }
+  if (category.length < 2) {
+    formError.value = 'Please enter a campaign category (at least 2 characters).';
+    return;
+  }
+  if (location.length < 2) {
+    formError.value = 'Please enter a target location (at least 2 characters).';
+    return;
+  }
+
   try {
     const token = localStorage.getItem('token');
     const payload = parseJwt(token);
@@ -107,7 +128,7 @@ async function submit() {
     }
     router.push(`/results/${res.data.campaignId}`);
   } catch (err) {
-    console.error(err);
+    formError.value = err?.userMessage || err?.response?.data?.error || 'Could not save campaign. Please check your inputs and try again.';
   }
 }
 </script>

@@ -146,7 +146,7 @@
                     <div class="growth-bar-fill" :style="growthBarStyle(c.growthRate)"></div>
                   </div>
                   <span :class="growthClass(c.growthRate)" class="small fw-bold">
-                    {{ (c.growthRate * 100).toFixed(1) }}%
+                    {{ growthText(c.growthRate) }}
                   </span>
                 </div>
               </td>
@@ -229,13 +229,19 @@ const flagEmoji = code => {
   return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E0 - 65 + c.charCodeAt(0)))
 }
 const growthBarStyle = rate => {
-  const pct = Math.min(Math.abs(rate) * 100, 100)
-  const color = rate >= 0.8 ? '#10b981' : rate >= 0.2 ? '#3b82f6' : '#ef4444'
+  const pct = Math.min(Math.abs(rate) * 400, 100)
+  const color = rate >= 0.10 ? '#10b981' : rate >= 0.03 ? '#3b82f6' : rate <= -0.02 ? '#ef4444' : '#94a3b8'
   return { width: pct + '%', background: color, height: '100%', borderRadius: '2px', transition: 'width .3s' }
 }
-const growthClass = rate => rate >= 0.8 ? 'text-success' : rate >= 0.2 ? 'text-primary' : 'text-danger'
+const growthClass = rate => rate >= 0.10 ? 'text-success' : rate >= 0.03 ? 'text-primary' : rate <= -0.02 ? 'text-danger' : 'text-muted'
 const categoryBadgeClass = cat =>
   cat === 'Rising' ? 'bg-success' : cat === 'Stable' ? 'bg-primary' : 'bg-danger'
+
+function growthText(rate) {
+  const n = Number(rate)
+  if (!Number.isFinite(n)) return 'Not available'
+  return `${(n * 100).toFixed(1)}%`
+}
 
 // Stats
 const risingCount   = computed(() => creators.value.filter(c => c.growthCategory === 'Rising').length)

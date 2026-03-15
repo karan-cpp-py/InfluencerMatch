@@ -179,7 +179,8 @@
       </div>
 
       <div v-if="!results.length" class="alert alert-secondary mb-0">
-        No matching results found for this campaign yet.
+        No relevant matches found for this campaign.
+        Try broadening budget, using a clearer category, or changing target location.
       </div>
     </div>
 
@@ -463,7 +464,7 @@ async function loadMatches() {
   } catch (e) {
     results.value = [];
     expandedResultKey.value = '';
-    error.value = e.response?.data?.error || 'Failed to load matching results.';
+    error.value = e?.userMessage || e?.response?.data?.error || 'Failed to load matching results.';
   } finally {
     loading.value = false;
   }
