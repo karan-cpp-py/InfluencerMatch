@@ -38,6 +38,31 @@
 
     <div v-if="error" class="alert alert-warning">{{ error }}</div>
 
+    <div class="card border-danger shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="text-danger fw-bold mb-2">Danger Zone: Full Platform Cleanup</h6>
+        <p class="small text-muted mb-2">
+          This will delete all platform content and all users except one SuperAdmin account.
+        </p>
+        <label class="form-label small fw-semibold mb-1">Type confirmation text exactly</label>
+        <input
+          v-model="cleanupConfirmation"
+          class="form-control form-control-sm mb-2"
+          placeholder="DELETE EVERYTHING EXCEPT SUPERADMIN"
+        />
+        <button
+          class="btn btn-danger btn-sm"
+          :disabled="cleaningUp || cleanupConfirmation !== cleanupPhrase"
+          @click="runPlatformCleanup"
+        >
+          {{ cleaningUp ? 'Cleaning...' : 'Cleanup Platform Data' }}
+        </button>
+        <div v-if="cleanupMessage" class="small mt-2" :class="cleanupSucceeded ? 'text-success' : 'text-danger'">
+          {{ cleanupMessage }}
+        </div>
+      </div>
+    </div>
+
     <div class="card border-0 shadow-sm">
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -144,6 +169,11 @@ const error = ref('');
 const savingUserId = ref(null);
 const deletingUserId = ref(null);
 const selectedUser = ref(null);
+const cleanupPhrase = 'DELETE EVERYTHING EXCEPT SUPERADMIN';
+const cleanupConfirmation = ref('');
+const cleaningUp = ref(false);
+const cleanupMessage = ref('');
+const cleanupSucceeded = ref(false);
 
 const roleOptions = ['Brand', 'Agency', 'Creator', 'SuperAdmin'];
 const customerTypeOptions = ['Brand', 'Agency', 'Creator', 'Internal'];
@@ -229,6 +259,33 @@ async function deleteUser(user) {
     error.value = e?.userMessage || e?.response?.data?.error || 'Failed to delete user.';
   } finally {
     deletingUserId.value = null;
+  }
+}
+
+async function runPlatformCleanup() {
+  if (cleanupConfirmation.value !== cleanupPhrase) return;
+  if (!confirm('This will delete all data except one SuperAdmin. Continue?')) return;
+
+  cleaningUp.value = true;
+  error.value = '';
+  cleanupMessage.value = '';
+  cleanupSucceeded.value = false;
+
+  try {
+    const { data } = await api.post('/admin/cleanup-platform-data', {
+      confirmation: cleanupConfirmation.value
+    });
+
+    cleanupSucceeded.value = true;
+    cleanupMessage.value = data?.message || 'Platform cleanup completed successfully.';
+    cleanupConfirmation.value = '';
+    selectedUser.value = null;
+    await loadUsers(1);
+  } catch (e) {
+    cleanupSucceeded.value = false;
+    cleanupMessage.value = e?.userMessage || e?.response?.data?.error || 'Cleanup failed.';
+  } finally {
+    cleaningUp.value = false;
   }
 }
 

@@ -311,6 +311,67 @@ namespace InfluencerMatch.API.Controllers
         }
 
         [Authorize(Roles = "SuperAdmin")]
+        [HttpPost("cleanup-platform-data")]
+        public async Task<IActionResult> CleanupPlatformData([FromBody] AdminCleanupPlatformDataDto dto)
+        {
+            const string requiredConfirmation = "DELETE EVERYTHING EXCEPT SUPERADMIN";
+            if (dto == null || !string.Equals(dto.Confirmation?.Trim(), requiredConfirmation, StringComparison.Ordinal))
+            {
+                return BadRequest(new
+                {
+                    error = $"Confirmation text mismatch. Type exactly: {requiredConfirmation}"
+                });
+            }
+
+            var keeperUserId = await _db.Users
+                .AsNoTracking()
+                .Where(u => (u.Role ?? string.Empty).ToUpper() == "SUPERADMIN")
+                .OrderBy(u => u.CreatedAt)
+                .ThenBy(u => u.UserId)
+                .Select(u => u.UserId)
+                .FirstOrDefaultAsync();
+
+            if (keeperUserId <= 0)
+            {
+                return BadRequest(new { error = "No SuperAdmin user found. Cleanup aborted." });
+            }
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+
+            await _db.Database.ExecuteSqlRawAsync(@"
+DO $$
+DECLARE
+    keep_table constant text[] := ARRAY['Users','__EFMigrationsHistory'];
+    truncate_sql text;
+BEGIN
+    SELECT 'TRUNCATE TABLE ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' RESTART IDENTITY CASCADE;'
+    INTO truncate_sql
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename <> ALL(keep_table);
+
+    IF truncate_sql IS NOT NULL THEN
+        EXECUTE truncate_sql;
+    END IF;
+END $$;
+");
+
+            var deletedUsers = await _db.Users
+                .Where(u => u.UserId != keeperUserId)
+                .ExecuteDeleteAsync();
+
+            await tx.CommitAsync();
+
+            return Ok(new
+            {
+                success = true,
+                keptSuperAdminUserId = keeperUserId,
+                deletedUsers,
+                message = "Platform cleanup completed. Only one SuperAdmin user remains."
+            });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
         [HttpGet("subscription-recovery")]
         public async Task<IActionResult> GetSubscriptionRecoveryQueue(
             [FromQuery] bool graceOnly = true,
@@ -1819,6 +1880,11 @@ namespace InfluencerMatch.API.Controllers
         public string? Role { get; set; }
         public string? CustomerType { get; set; }
         public bool? EmailVerified { get; set; }
+    }
+
+    public class AdminCleanupPlatformDataDto
+    {
+        public string? Confirmation { get; set; }
     }
 
     public class SubscriptionRecoveryOutreachDto
