@@ -36,10 +36,12 @@ The frontend reads the API base URL from an environment variable `VITE_API_URL`.
 Create a `.env` file in `frontend/influencer-match` with contents similar to:
 ```
 VITE_API_URL=https://localhost:60587/api
+VITE_GOOGLE_CLIENT_ID=<GOOGLE_OAUTH_WEB_CLIENT_ID>
 VITE_GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/creator-dashboard
 ```
 
 `VITE_GOOGLE_OAUTH_REDIRECT_URI` should exactly match one of your Google OAuth client Authorized redirect URIs.
+`VITE_GOOGLE_CLIENT_ID` is required for Google Sign-In buttons on Login/Register.
 
 ### Running
 1. Install dependencies:
@@ -82,6 +84,7 @@ VITE_GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/creator-dashboard
    - `EmailNotifications__Enabled=true` if you want real verification/reset emails
    - `EmailNotifications__SmtpHost`, `EmailNotifications__SmtpPort`, `EmailNotifications__Username`, `EmailNotifications__Password`
    - `EmailNotifications__FromEmail`, `EmailNotifications__FromName`, `EmailNotifications__UseSsl`
+   - `GoogleAuth__ClientId=<GOOGLE_OAUTH_WEB_CLIENT_ID>`
 6. Deploy and confirm health endpoint:
    - `https://<your-render-service>.onrender.com/health`
 
@@ -90,6 +93,7 @@ VITE_GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/creator-dashboard
 2. Set **Root Directory** to: `frontend/influencer-match`
 3. Set environment variable in Vercel:
    - `VITE_API_URL=https://<your-render-service>.onrender.com/api`
+   - `VITE_GOOGLE_CLIENT_ID=<GOOGLE_OAUTH_WEB_CLIENT_ID>`
    - `VITE_GOOGLE_OAUTH_REDIRECT_URI=https://<your-vercel-app>.vercel.app/creator-dashboard`
 4. Deploy.
 

@@ -219,6 +219,11 @@
                 <li>Paste code in <strong>Link Code</strong>, then click <strong>Ingest from Connected Account</strong>.</li>
               </ol>
             </div>
+            <div class="d-flex justify-content-end mb-3">
+              <button class="btn btn-sm btn-outline-primary" @click="openDemographicsWizard">
+                Open Guided Setup Wizard
+              </button>
+            </div>
             <div class="row g-2 mb-2">
               <div class="col-lg-9">
                 <input v-model.trim="oauthCode" class="form-control" placeholder="Paste Google authorization code after consent" />
@@ -272,6 +277,67 @@
               <div class="col-12 small text-muted">
                 Snapshot window: {{ fmtDate(demographics.windowStartDate) }} to {{ fmtDate(demographics.windowEndDate) }}
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showDemographicsWizard" class="wizard-overlay" @click.self="closeDemographicsWizard">
+          <div class="wizard-card">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <h5 class="fw-bold mb-1">Demographics Setup Wizard</h5>
+                <div class="small text-muted">Step {{ wizardStep }} of 4</div>
+              </div>
+              <button class="btn btn-sm btn-outline-secondary" @click="closeDemographicsWizard">Close</button>
+            </div>
+
+            <div class="progress mb-3" style="height:8px">
+              <div class="progress-bar" :style="{ width: `${(wizardStep / 4) * 100}%` }"></div>
+            </div>
+
+            <div v-if="wizardStep === 1" class="small">
+              <h6 class="fw-semibold">Step 1: Configure Google Redirect URI</h6>
+              <p class="text-muted mb-2">
+                Add this exact URI in Google Cloud Console -> OAuth Client -> Authorized redirect URIs:
+              </p>
+              <div class="wizard-code mb-3">{{ oauthRedirectUri }}</div>
+              <p class="text-muted mb-0">After saving in Google Console, click Next.</p>
+            </div>
+
+            <div v-else-if="wizardStep === 2" class="small">
+              <h6 class="fw-semibold">Step 2: Connect Google</h6>
+              <p class="text-muted mb-3">Click Connect Google to open OAuth consent in a new tab.</p>
+              <button class="btn btn-sm btn-outline-primary" @click="openGoogleConsent" :disabled="connectingGoogle">
+                <span v-if="connectingGoogle" class="spinner-border spinner-border-sm me-1"></span>
+                Connect Google
+              </button>
+            </div>
+
+            <div v-else-if="wizardStep === 3" class="small">
+              <h6 class="fw-semibold">Step 3: Paste Authorization Code</h6>
+              <p class="text-muted mb-2">Copy the <code>code</code> parameter from redirected URL and paste below.</p>
+              <input v-model.trim="oauthCode" class="form-control form-control-sm mb-2" placeholder="Paste code here" />
+              <button class="btn btn-sm btn-outline-primary" @click="exchangeOAuthCode" :disabled="linkingGoogleCode || !oauthCode">
+                <span v-if="linkingGoogleCode" class="spinner-border spinner-border-sm me-1"></span>
+                Link Code
+              </button>
+            </div>
+
+            <div v-else class="small">
+              <h6 class="fw-semibold">Step 4: Ingest Snapshot</h6>
+              <p class="text-muted mb-3">Fetch demographics from connected Google account.</p>
+              <button class="btn btn-sm btn-primary" @click="ingestDemographicsWithoutToken" :disabled="ingestingDemographics">
+                <span v-if="ingestingDemographics" class="spinner-border spinner-border-sm me-1"></span>
+                Ingest from Connected Account
+              </button>
+            </div>
+
+            <div v-if="demographicsError" class="alert alert-warning py-2 small mt-3 mb-0">{{ demographicsError }}</div>
+            <div v-if="demographicsLoaded" class="alert alert-success py-2 small mt-3 mb-0">Demographics snapshot updated.</div>
+
+            <div class="d-flex justify-content-between mt-3">
+              <button class="btn btn-sm btn-outline-secondary" :disabled="wizardStep === 1" @click="wizardPrev">Back</button>
+              <button class="btn btn-sm btn-primary" :disabled="wizardStep === 4" @click="wizardNext">Next</button>
             </div>
           </div>
         </div>
@@ -613,6 +679,8 @@ const demographicsLoaded = ref(false);
 const connectingGoogle = ref(false);
 const linkingGoogleCode = ref(false);
 const oauthCode = ref('');
+const showDemographicsWizard = ref(false);
+const wizardStep = ref(1);
 const oauthRedirectUri = computed(() => {
   const configured = String(import.meta.env.VITE_GOOGLE_OAUTH_REDIRECT_URI || '').trim();
   if (configured) return configured;
@@ -881,6 +949,7 @@ async function openGoogleConsent() {
     const url = res.data?.url;
     if (!url) throw new Error('No OAuth URL returned');
     window.open(url, '_blank', 'noopener,noreferrer');
+    if (wizardStep.value < 3) wizardStep.value = 3;
   } catch (e) {
     demographicsError.value = e.userMessage || e.response?.data?.error || 'Unable to start Google OAuth consent.';
   } finally {
@@ -900,6 +969,7 @@ async function exchangeOAuthCode() {
     });
     oauthCode.value = '';
     demographicsLoaded.value = true;
+    if (wizardStep.value < 4) wizardStep.value = 4;
   } catch (e) {
     demographicsError.value = e.userMessage || e.response?.data?.error || 'Unable to link Google authorization code.';
   } finally {
@@ -919,6 +989,23 @@ async function loadCollabs() {
   } finally {
     loadingCollabs.value = false;
   }
+}
+
+function openDemographicsWizard() {
+  showDemographicsWizard.value = true;
+  wizardStep.value = 1;
+}
+
+function closeDemographicsWizard() {
+  showDemographicsWizard.value = false;
+}
+
+function wizardNext() {
+  wizardStep.value = Math.min(4, wizardStep.value + 1);
+}
+
+function wizardPrev() {
+  wizardStep.value = Math.max(1, wizardStep.value - 1);
 }
 
 async function loadInsights() {
@@ -1176,6 +1263,35 @@ function fmtDate(d) {
 .rank-poor   { background: #fff1f2; color: #9f1239; border: 2px solid #fda4af; }
 
 .topic-advice-card { border-radius: 14px; }
+
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.wizard-card {
+  width: min(640px, 100%);
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.3);
+  padding: 1rem;
+}
+
+.wizard-code {
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  padding: 0.55rem 0.7rem;
+  font-family: Consolas, Monaco, monospace;
+  word-break: break-all;
+}
 
 @media (max-width: 768px) {
   .creator-hero {
