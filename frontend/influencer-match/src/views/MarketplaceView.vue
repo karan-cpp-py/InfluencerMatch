@@ -262,12 +262,38 @@
                 </div>
               </div>
 
-              <div class="d-flex justify-content-between align-items-center">
+              <div class="d-flex justify-content-between align-items-center mb-2">
                 <span v-if="c.country" class="text-muted small">📍 {{ c.country }}</span>
                 <span class="text-muted small">CPM: ${{ estimateCpm(c).toFixed(0) }}</span>
-                <button class="btn btn-outline-primary btn-sm ms-auto" @click.stop="openDetail(c)">
+              </div>
+              <div class="d-flex flex-wrap gap-1">
+                <button class="btn btn-outline-primary btn-sm" @click.stop="openDetail(c)">
                   View Profile
                 </button>
+                <router-link
+                  v-if="c.creatorId"
+                  :to="`/creator/${c.creatorId}/analytics`"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click.stop
+                >
+                  Channel Analytics
+                </router-link>
+                <router-link
+                  v-if="c.creatorId"
+                  :to="`/creator/${c.creatorId}/video-analytics`"
+                  class="btn btn-outline-secondary btn-sm"
+                  @click.stop
+                >
+                  Video Analytics
+                </router-link>
+                <router-link
+                  v-if="c.creatorId"
+                  :to="`/creator/${c.creatorId}/latest-video-analysis`"
+                  class="btn btn-outline-dark btn-sm"
+                  @click.stop
+                >
+                  Analyze with AI
+                </router-link>
               </div>
               <div class="small text-muted mt-2">Estimated campaign cost: ${{ Math.round(estimateCampaignCost(c)).toLocaleString() }}</div>
             </div>

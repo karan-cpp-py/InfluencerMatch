@@ -92,6 +92,14 @@
                 <button class="btn btn-sm btn-outline-dark flex-grow-1" @click="analyzeVideo(v)">
                   Analyze with AI
                 </button>
+                <button
+                  class="btn btn-sm btn-outline-primary"
+                  @click="openProfile(v)"
+                  :disabled="!hasInternalProfile(v)"
+                  :title="hasInternalProfile(v) ? 'Open creator profile' : 'Profile not linked in platform yet'"
+                >
+                  View Profile
+                </button>
                 <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Watch</a>
               </div>
             </div>
@@ -142,6 +150,16 @@ async function analyzeVideo(video) {
     path: '/creator/latest-video-analysis',
     query: { videoId: video?.videoId }
   });
+}
+
+function hasInternalProfile(video) {
+  return Number(video?.creatorId || 0) > 0;
+}
+
+function openProfile(video) {
+  const creatorId = Number(video?.creatorId || 0);
+  if (creatorId <= 0) return;
+  router.push(`/creator/${creatorId}/analytics`);
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────
