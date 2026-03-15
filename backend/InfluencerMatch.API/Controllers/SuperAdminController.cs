@@ -156,6 +156,113 @@ namespace InfluencerMatch.API.Controllers
         }
 
         [Authorize(Roles = "SuperAdmin")]
+        [HttpGet("users")]
+        public async Task<IActionResult> GetUsers(
+            [FromQuery] string? query = null,
+            [FromQuery] string? role = null,
+            [FromQuery] string? customerType = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 30)
+        {
+            page = page < 1 ? 1 : page;
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var usersQuery = _db.Users.AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                var term = query.Trim().ToLower();
+                usersQuery = usersQuery.Where(u =>
+                    u.Name.ToLower().Contains(term) ||
+                    u.Email.ToLower().Contains(term));
+            }
+
+            if (!string.IsNullOrWhiteSpace(role))
+            {
+                usersQuery = usersQuery.Where(u => u.Role == role);
+            }
+
+            if (!string.IsNullOrWhiteSpace(customerType))
+            {
+                usersQuery = usersQuery.Where(u => u.CustomerType == customerType);
+            }
+
+            var total = await usersQuery.CountAsync();
+            var rows = await usersQuery
+                .OrderByDescending(u => u.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(u => new
+                {
+                    u.UserId,
+                    u.Name,
+                    u.Email,
+                    u.Role,
+                    u.CustomerType,
+                    u.EmailVerified,
+                    u.Country,
+                    u.CompanyName,
+                    u.AuthProvider,
+                    u.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(new { page, pageSize, total, items = rows });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
+        [HttpPatch("users/{userId:int}")]
+        public async Task<IActionResult> UpdateUserBySuperAdmin(int userId, [FromBody] AdminUpdateUserDto dto)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+            {
+                return NotFound(new { error = "User not found." });
+            }
+
+            var currentEmail = User?.Identity?.Name ?? string.Empty;
+            if (string.Equals(user.Email, currentEmail, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(dto.Role)
+                && !string.Equals(dto.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "You cannot remove your own SuperAdmin access." });
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.Name))
+            {
+                user.Name = dto.Name.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.Role))
+            {
+                user.Role = dto.Role.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.CustomerType))
+            {
+                user.CustomerType = dto.CustomerType.Trim();
+            }
+
+            if (dto.EmailVerified.HasValue)
+            {
+                user.EmailVerified = dto.EmailVerified.Value;
+            }
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                updated = true,
+                user.UserId,
+                user.Name,
+                user.Email,
+                user.Role,
+                user.CustomerType,
+                user.EmailVerified
+            });
+        }
+
+        [Authorize(Roles = "SuperAdmin")]
         [HttpGet("subscription-recovery")]
         public async Task<IActionResult> GetSubscriptionRecoveryQueue(
             [FromQuery] bool graceOnly = true,
@@ -1656,6 +1763,14 @@ namespace InfluencerMatch.API.Controllers
         public string? Status { get; set; }
         public int? OwnerUserId { get; set; }
         public string? Notes { get; set; }
+    }
+
+    public class AdminUpdateUserDto
+    {
+        public string? Name { get; set; }
+        public string? Role { get; set; }
+        public string? CustomerType { get; set; }
+        public bool? EmailVerified { get; set; }
     }
 
     public class SubscriptionRecoveryOutreachDto

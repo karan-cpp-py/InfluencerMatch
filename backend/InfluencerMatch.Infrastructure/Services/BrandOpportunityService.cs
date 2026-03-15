@@ -47,6 +47,7 @@ namespace InfluencerMatch.Infrastructure.Services
 
             // Load matching creators + analytics + growth scores
             var creatorsQuery = _db.Creators.AsNoTracking()
+                .Where(c => c.UserId.HasValue && c.User != null)
                 .Where(c => string.IsNullOrWhiteSpace(request.BrandCategory) || c.Category == request.BrandCategory)
                 .Where(c => string.IsNullOrWhiteSpace(request.Country)       || c.Country   == request.Country);
 

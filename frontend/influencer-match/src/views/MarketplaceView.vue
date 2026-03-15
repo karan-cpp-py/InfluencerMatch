@@ -6,23 +6,29 @@
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
           <h2 class="fw-bold mb-1">Creator Marketplace</h2>
-          <p class="text-muted mb-0">India-only marketplace with regional-language creator discovery.</p>
+          <p class="text-muted mb-0">India-only marketplace with regional-language creator discovery and advanced search.</p>
         </div>
         <div class="d-flex gap-2 align-items-center">
             <span class="badge rounded-pill text-bg-light border fs-6 px-3 py-2">{{ visibleResultCount }} creators</span>
+          <span v-if="isSearchTab" class="badge rounded-pill text-bg-warning border px-3 py-2">Search Mode</span>
           <span class="badge rounded-pill bg-primary-subtle text-primary border px-3 py-2">Live Filters</span>
         </div>
       </div>
     </div>
 
     <!-- Filters -->
-    <div class="card border-0 shadow-sm mb-3 sticky-top filter-dock">
+    <div :class="['card border-0 shadow-sm mb-3 filter-dock', { 'sticky-top': filtersPinned }]">
       <div class="card-body p-3">
-        <div class="d-flex d-lg-none justify-content-between align-items-center mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
           <span class="small fw-semibold text-muted">Filters</span>
-          <button class="btn btn-outline-primary btn-sm" @click="mobileFiltersOpen = !mobileFiltersOpen">
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm d-none d-lg-inline-flex" @click="filtersPinned = !filtersPinned">
+              {{ filtersPinned ? 'Unpin Filters' : 'Pin Filters' }}
+            </button>
+            <button class="btn btn-outline-primary btn-sm d-lg-none" @click="mobileFiltersOpen = !mobileFiltersOpen">
             {{ mobileFiltersOpen ? 'Hide Filters' : 'Show Filters' }}
-          </button>
+            </button>
+          </div>
         </div>
 
         <div class="filter-panel" :class="{ open: mobileFiltersOpen }">
@@ -497,10 +503,13 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import api from '../services/api';
 import { trackFunnelEvent } from '../services/funnel';
 import { authRole } from '../services/auth';
 import { engagementMeta } from '../utils/engagement';
+
+const route = useRoute();
 
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -567,6 +576,7 @@ const myRequests = ref([]);
 const workflow = ref(null);
 const newMilestone = ref({ title: '', description: '', dueDate: '' });
 const mobileFiltersOpen = ref(false);
+const filtersPinned = ref(true);
 
 const isBrandUser = computed(() => ['Brand', 'Agency'].includes(authRole.value || localStorage.getItem('role')));
 
@@ -607,8 +617,13 @@ const detailEngagementMeta = computed(() => {
 
 const estimatedAudience = computed(() => estimateAudienceDemographics(detail.value));
 const estimatedRisk = computed(() => estimateAudienceRisk(detail.value));
+const isSearchTab = computed(() => String(route.query.tab || '').toLowerCase() === 'search');
 
 onMounted(async () => {
+  if (isSearchTab.value) {
+    filtersPinned.value = true;
+    mobileFiltersOpen.value = true;
+  }
   await search(1);
   if (isBrandUser.value) {
     await loadMyRequests();

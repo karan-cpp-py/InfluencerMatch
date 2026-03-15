@@ -136,6 +136,8 @@ namespace InfluencerMatch.Application.Services
             else
             {
                 var needsUpdate = false;
+                var hasRequestedCustomerType = !string.IsNullOrWhiteSpace(customerType);
+
                 if (!user.EmailVerified)
                 {
                     user.EmailVerified = true;
@@ -148,6 +150,26 @@ namespace InfluencerMatch.Application.Services
                 {
                     user.AuthProvider = "google";
                     needsUpdate = true;
+                }
+
+                // If Google signup sends an explicit account type, keep persisted role/customerType
+                // aligned so users do not get routed under a stale account type.
+                if (hasRequestedCustomerType && !string.Equals(user.Role, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                {
+                    var normalizedCustomerType = NormalizeCustomerType(customerType);
+                    var resolvedRole = ResolveRoleForCustomerType(normalizedCustomerType);
+
+                    if (!string.Equals(user.CustomerType, normalizedCustomerType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        user.CustomerType = normalizedCustomerType;
+                        needsUpdate = true;
+                    }
+
+                    if (!string.Equals(user.Role, resolvedRole, StringComparison.OrdinalIgnoreCase))
+                    {
+                        user.Role = resolvedRole;
+                        needsUpdate = true;
+                    }
                 }
 
                 if (needsUpdate)

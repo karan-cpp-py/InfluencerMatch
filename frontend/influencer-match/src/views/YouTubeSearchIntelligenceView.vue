@@ -13,7 +13,7 @@
           <div class="col-lg-4">
             <div class="hero-metrics d-flex gap-2 flex-wrap justify-content-lg-end">
               <span class="badge text-bg-light border px-3 py-2">{{ resolvedCreators.length }} results</span>
-              <span class="badge text-bg-light border px-3 py-2">Mode: Channel Link</span>
+              <span class="badge text-bg-light border px-3 py-2">Mode: {{ searchMode === 'general' ? 'Keyword Discovery' : 'Channel Link' }}</span>
               <span class="badge text-bg-light border px-3 py-2">Selected: {{ selectedChannelIds.length }}</span>
             </div>
           </div>
@@ -69,6 +69,86 @@
               Supported: <code>youtube.com/@handle</code> · <code>youtube.com/channel/UCxxx</code> · <code>youtube.com/c/name</code>
             </p>
             <div v-if="resolveError" class="alert alert-warning mt-3 mb-0 py-2">{{ resolveError }}</div>
+          </div>
+
+          <div v-else-if="searchMode === 'general'">
+            <div class="row g-2 align-items-end">
+              <div class="col-xl-4 col-lg-5 position-relative">
+                <label class="form-label small text-muted">Search Query</label>
+                <input
+                  v-model.trim="filters.query"
+                  class="form-control"
+                  placeholder="fintech creators india, gaming hindi reviews"
+                  @focus="showSuggestions = true"
+                  @blur="hideSuggestionsDelayed"
+                  @input="onQueryInput"
+                  @keyup.enter="runSearch"
+                />
+                <div v-if="showSuggestions && filteredSuggestions.length" class="suggestions-dropdown">
+                  <div class="suggestions-section-label">Trending Ideas</div>
+                  <button
+                    v-for="suggestion in filteredSuggestions"
+                    :key="suggestion"
+                    type="button"
+                    class="suggestion-item"
+                    @mousedown.prevent="pickSuggestion(suggestion)"
+                  >
+                    <span class="suggestion-icon">↗</span>
+                    <span>{{ suggestion }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="col-xl-2 col-lg-3 col-md-4">
+                <label class="form-label small text-muted">Category</label>
+                <input v-model.trim="filters.category" class="form-control" placeholder="Tech" />
+              </div>
+
+              <div class="col-xl-2 col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Country</label>
+                <select v-model="filters.country" class="form-select">
+                  <option value="IN">India</option>
+                  <option value="US">United States</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="CA">Canada</option>
+                  <option value="AU">Australia</option>
+                </select>
+              </div>
+
+              <div class="col-xl-2 col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Language</label>
+                <select v-model="filters.language" class="form-select">
+                  <option value="">Any</option>
+                  <option value="Hindi">Hindi</option>
+                  <option value="English">English</option>
+                  <option value="Tamil">Tamil</option>
+                  <option value="Telugu">Telugu</option>
+                </select>
+              </div>
+
+              <div class="col-xl-2 col-lg-2 col-md-4">
+                <label class="form-label small text-muted">Limit</label>
+                <select v-model.number="filters.limit" class="form-select">
+                  <option :value="12">12</option>
+                  <option :value="18">18</option>
+                  <option :value="30">30</option>
+                </select>
+              </div>
+
+              <div class="col-xl-2 col-lg-3 col-md-4">
+                <label class="form-label small text-muted">Min Subscribers</label>
+                <input v-model.number="filters.minSubscribers" class="form-control" type="number" min="0" step="1000" placeholder="10000" />
+              </div>
+
+              <div class="col-xl-2 col-lg-3 col-md-4 d-grid">
+                <button class="btn btn-primary" :disabled="loadingSearch || !filters.query" @click="runSearch">
+                  <span v-if="loadingSearch" class="spinner-border spinner-border-sm me-1"></span>
+                  Search Intelligence
+                </button>
+              </div>
+            </div>
+
+            <div v-if="searchError" class="alert alert-warning mt-3 mb-0 py-2">{{ searchError }}</div>
           </div>
 
         </div>
@@ -131,7 +211,7 @@
         </div>
       </section>
 
-      <section v-if="searchMode === 'general' && searchResult.results.length" class="card border-0 shadow-sm mb-4 action-panel">
+      <section v-if="searchMode === 'general' && displayedSearchResults.length" class="card border-0 shadow-sm mb-4 action-panel">
         <div class="card-body">
           <div class="row g-3 align-items-end">
             <div class="col-xl-5">
@@ -197,13 +277,13 @@
         </div>
       </section>
 
-      <section v-else-if="searchMode === 'general' && !searchResult.results.length" class="text-center text-muted py-5">
+      <section v-else-if="searchMode === 'general' && !displayedSearchResults.length" class="text-center text-muted py-5">
         <div class="fs-3 mb-2">Start with a query</div>
         <p class="mb-0">Try: fintech creators india, gaming hindi reviews, beauty shorts creators.</p>
       </section>
 
       <section v-else-if="searchMode === 'general'" class="row g-3">
-        <div v-for="creator in searchResult.results" :key="creator.creatorId" class="col-lg-6 col-xl-4">
+        <div v-for="creator in displayedSearchResults" :key="creator.creatorId" class="col-lg-6 col-xl-4">
           <article class="card border-0 shadow-sm result-card h-100" :class="{ 'result-card-selected': isSelected(creator.channelId) }">
             <div class="card-body d-flex flex-column">
               <div class="d-flex justify-content-between align-items-center mb-2">
@@ -358,6 +438,7 @@ const searchMode = ref('channel-link');
 
 const searchModes = [
   { id: 'channel-link', icon: '🔗', label: 'Channel Link',    hint: 'Paste a YouTube channel URL' },
+  { id: 'general', icon: '🧭', label: 'Keyword Discovery', hint: 'Search creators by topic, language, and intent' }
 ];
 
 function switchMode(m) {
@@ -422,7 +503,8 @@ const filters = reactive({
   category: '',
   country: 'IN',
   language: '',
-  limit: 18
+  limit: 18,
+  minSubscribers: 0
 });
 
 const loadingSearch = ref(false);
@@ -467,9 +549,14 @@ const bulkProgressPercent = computed(() => {
   return Math.round((bulkState.completed / bulkState.total) * 100);
 });
 
+const displayedSearchResults = computed(() => {
+  const minSubs = Number(filters.minSubscribers || 0);
+  return (searchResult.value.results || []).filter((creator) => Number(creator?.subscribers || 0) >= minSubs);
+});
+
 const compareCreators = computed(() => {
   if (!selectedChannelIds.value.length) return [];
-  return searchResult.value.results.filter((c) => selectedChannelIds.value.includes(c.channelId)).slice(0, 4);
+  return displayedSearchResults.value.filter((c) => selectedChannelIds.value.includes(c.channelId)).slice(0, 4);
 });
 
 onMounted(() => {
@@ -566,7 +653,7 @@ async function openCreatorAnalytics(creator) {
 async function analyzeTopCreators(count, mode) {
   if (bulkState.running) return;
 
-  const targets = searchResult.value.results.slice(0, count);
+  const targets = displayedSearchResults.value.slice(0, count);
   if (!targets.length) return;
 
   bulkState.running = true;
@@ -604,7 +691,7 @@ function isSelected(channelId) {
 async function saveShortlist() {
   if (!selectedChannelIds.value.length || savingShortlist.value) return;
 
-  const selectedCreators = searchResult.value.results.filter((c) => selectedChannelIds.value.includes(c.channelId));
+  const selectedCreators = displayedSearchResults.value.filter((c) => selectedChannelIds.value.includes(c.channelId));
   const creatorIds = selectedCreators.map((c) => Number(c.creatorId || 0)).filter((id) => id > 0);
   const channelIds = selectedCreators.map((c) => c.channelId).filter(Boolean);
 

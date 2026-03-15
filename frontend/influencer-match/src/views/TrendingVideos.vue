@@ -100,19 +100,19 @@
       </div>
     </div>
 
-    <VideoAiAnalysisDialog ref="videoAiDialog" />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import api from '../services/api';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
+
+const router = useRouter();
 
 const videos     = ref([]);
 const loading    = ref(false);
 const error      = ref('');
-const videoAiDialog = ref(null);
 
 const filters = reactive({ topN: 35, category: '', country: 'IN' });
 
@@ -138,15 +138,10 @@ async function load() {
 }
 
 async function analyzeVideo(video) {
-  videoAiDialog.value?.open({
-    videoId: video.videoId,
-    title: video.title,
-    channelName: video.channelName,
-    viewCount: video.viewCount,
-    likeCount: video.likeCount,
-    commentCount: video.commentCount,
-    publishedAt: null
-  }, video.channelName);
+  router.push({
+    path: '/creator/latest-video-analysis',
+    query: { videoId: video?.videoId }
+  });
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────

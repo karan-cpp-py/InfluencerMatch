@@ -39,6 +39,11 @@ const routes = [
     component: () => import('../views/SuperAdminCreatorsView.vue'),
     meta: { requiresAuth: false } // access control handled in the view itself
   },
+  {
+    path: '/admin/users',
+    component: () => import('../views/SuperAdminUsersView.vue'),
+    meta: { requiresAuth: false }
+  },
     {
       path: '/admin/youtube-importer',
       component: () => import('../views/YoutubeImporterView.vue'),
@@ -54,6 +59,11 @@ const routes = [
   {
     path: '/creator/onboarding',
     component: () => import('../views/CreatorOnboardingView.vue'),
+    meta: { requiresAuth: true, role: 'Creator' }
+  },
+  {
+    path: '/creator/latest-video-analysis',
+    component: () => import('../views/LatestVideoAnalysisView.vue'),
     meta: { requiresAuth: true, role: 'Creator' }
   },
 
@@ -75,12 +85,13 @@ const routes = [
   },
 
   // ── Brand discovery / analytics ────────────────────────────────────────
-  { path: '/brand/youtube-creators', component: () => import('../views/UnifiedCreatorDiscoveryView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
+  { path: '/brand/youtube-creators', redirect: '/marketplace?tab=search' },
   { path: '/youtube/search-intelligence', component: () => import('../views/YouTubeSearchIntelligenceView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager', 'Creator'] } },
   { path: '/discovery',            component: () => import('../views/CreatorDiscovery.vue'),    meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
-  { path: '/creators/search',      redirect: '/brand/youtube-creators?tab=search' },
+  { path: '/creators/search',      redirect: '/marketplace?tab=search' },
   { path: '/creator/:id/analytics',       component: () => import('../views/CreatorAnalyticsView.vue'),  meta: { requiresAuth: true } },
   { path: '/creator/:id/video-analytics', component: () => import('../views/VideoAnalyticsView.vue'),     meta: { requiresAuth: true } },
+  { path: '/creator/:id/latest-video-analysis', component: () => import('../views/LatestVideoAnalysisView.vue'), meta: { requiresAuth: true } },
   { path: '/creators/leaderboard', component: () => import('../views/ScoreLeaderboard.vue'),    meta: { requiresAuth: true } },
   { path: '/creators/compare',     component: () => import('../views/CreatorCompare.vue'),      meta: { requiresAuth: true } },
   {

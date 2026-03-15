@@ -18,13 +18,12 @@
           >
             Contact Brands
           </a>
-          <button
+          <router-link
+            to="/creator/latest-video-analysis"
             class="btn btn-sm btn-light fw-semibold"
-            @click="openLatestCreatorVideoAnalysis"
-            :disabled="recentVideos.length === 0"
           >
             AI Latest Video
-          </button>
+          </router-link>
         </div>
       </section>
 
@@ -321,10 +320,10 @@
                 <div class="small text-muted mt-1 mb-2">{{ fmtDate(v.publishedAt) }}</div>
                 <!-- Per-video analyse button -->
                 <div class="mt-auto">
-                  <button
+                  <router-link
+                    :to="`/creator/latest-video-analysis?videoId=${v.youtubeVideoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
                     class="btn btn-sm btn-outline-primary w-100"
-                    @click="openInlineAiAnalysis(v)"
-                  >🔍 Analyse with AI</button>
+                  >🔍 Analyse with AI</router-link>
                 </div>
               </div>
             </div>
@@ -564,7 +563,6 @@
         </div>
       </div>
 
-      <VideoAiAnalysisDialog ref="videoAiDialog" />
     </div>
     </div>
   </div>
@@ -577,7 +575,6 @@ import api from '../services/api';
 import { authUserName } from '../services/auth';
 import { trackFunnelEvent } from '../services/funnel';
 import { engagementMeta } from '../utils/engagement';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route = useRoute();
 
@@ -611,7 +608,6 @@ const oauthCode = ref('');
 // Videos
 const recentVideos = ref([]);
 const pendingCollabs = ref(0);
-const videoAiDialog = ref(null);
 const videoSearch = ref('');
 const videoSort = ref('recent');
 
@@ -635,24 +631,6 @@ const filteredRecentVideos = computed(() => {
 
   return list;
 });
-
-function openInlineAiAnalysis(video) {
-  videoAiDialog.value?.open({
-    videoId: video.youtubeVideoId,
-    title: video.title,
-    channelName: channel.value?.channelName,
-    viewCount: video.viewCount,
-    likeCount: video.likeCount,
-    commentCount: video.commentCount,
-    publishedAt: video.publishedAt
-  }, channel.value?.channelName || profile.value?.name || userName.value);
-}
-
-function openLatestCreatorVideoAnalysis() {
-  const latest = recentVideos.value[0];
-  if (!latest) return;
-  openInlineAiAnalysis(latest);
-}
 
 // Bulk AI video analysis
 const bulkAnalysisLoading = ref(false);

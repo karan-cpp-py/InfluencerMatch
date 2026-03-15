@@ -526,7 +526,7 @@
                           <div class="mt-1">
                             <button
                               class="btn btn-sm btn-outline-dark"
-                              @click="openInlineAiAnalysis(video)"
+                              @click="openLatestVideoAnalysis(video)"
                             >
                               Analyze with AI
                             </button>
@@ -544,7 +544,6 @@
       </div>
     </div>
 
-    <VideoAiAnalysisDialog ref="videoAiDialog" />
   </div>
 </template>
 
@@ -553,7 +552,6 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../services/api';
 import { engagementMeta } from '../utils/engagement';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const importedCreatorProfileOffset = 1_000_000_000;
 const usdToInr = 83;
@@ -584,7 +582,6 @@ const campaignContext = ref(null);
 const ytPreviewLoading = ref(false);
 const ytPreviewError = ref('');
 const ytPreviewResult = ref(null);
-const videoAiDialog = ref(null);
 const ytPreviewForm = ref({
   query: '',
   countryCode: 'IN',
@@ -714,16 +711,12 @@ const matchReasons = computed(() => {
   return reasons;
 });
 
-function openInlineAiAnalysis(video) {
-  videoAiDialog.value?.open({
-    videoId: video.youtubeVideoId,
-    title: video.title,
-    channelName: detailData.value?.channelName,
-    viewCount: video.viewCount,
-    likeCount: video.likeCount,
-    commentCount: video.commentCount,
-    publishedAt: video.publishedAt
-  }, detailData.value?.channelName);
+function openLatestVideoAnalysis(video) {
+  if (!selectedMatch.value?.creatorId) return;
+  router.push({
+    path: `/creator/${selectedMatch.value.creatorId}/latest-video-analysis`,
+    query: { videoId: video?.youtubeVideoId }
+  });
 }
 
 onMounted(async () => {

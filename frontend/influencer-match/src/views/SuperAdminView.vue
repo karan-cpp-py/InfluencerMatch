@@ -10,6 +10,7 @@
       </div>
       <div class="d-flex gap-2">
         <router-link to="/admin/creators" class="btn btn-outline-light btn-sm fw-semibold">Manage Creators</router-link>
+        <router-link to="/admin/users" class="btn btn-outline-light btn-sm fw-semibold">Manage Users</router-link>
         <button class="btn btn-light btn-sm fw-semibold" @click="refreshDashboard">Refresh Dashboard</button>
       </div>
     </section>

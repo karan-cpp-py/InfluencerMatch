@@ -318,19 +318,17 @@
         <button class="btn-close btn-sm" @click="refreshMsg=''"></button>
       </div>
 
-      <VideoAiAnalysisDialog ref="videoAiDialog" />
-
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../services/api';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route      = useRoute();
+const router     = useRouter();
 const creatorId  = route.params.id;
 
 const data        = ref(null);
@@ -338,7 +336,6 @@ const loading     = ref(true);
 const loadError   = ref('');
 const refreshing  = ref(false);
 const refreshMsg  = ref('');
-const videoAiDialog = ref(null);
 
 // Filters
 const typeFilter  = ref('All');
@@ -463,16 +460,10 @@ async function doRefresh() {
 function analyzeLatestVideo() {
   const latest = data.value?.videos?.[0];
   if (!latest) return;
-
-  videoAiDialog.value?.open({
-    videoId: latest.youtubeVideoId,
-    title: latest.title,
-    channelName: data.value?.channelName,
-    viewCount: latest.views,
-    likeCount: latest.likes,
-    commentCount: latest.comments,
-    publishedAt: latest.publishedAt
-  }, data.value?.channelName);
+  router.push({
+    path: `/creator/${creatorId}/latest-video-analysis`,
+    query: { videoId: latest.youtubeVideoId }
+  });
 }
 
 onMounted(loadData);

@@ -304,7 +304,7 @@
                   <div class="mt-2 d-flex gap-2">
                     <button
                       class="btn btn-sm btn-outline-dark"
-                      @click="openInlineAiAnalysis(v)"
+                      @click="openLatestVideoAnalysis(v)"
                     >
                       Analyze with AI
                     </button>
@@ -363,15 +363,15 @@
       </div>
     </div>
 
-    <VideoAiAnalysisDialog ref="videoAiDialog" />
-
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import api from '../services/api.js';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
+
+const router = useRouter();
 
 const creators    = ref([]);
 const totalCount  = ref(0);
@@ -389,7 +389,6 @@ const readiness       = ref(null);
 const opportunityRadar = ref(null);
 const regionalLanguage = ref(null);
 const emailActionMessage = ref('');
-const videoAiDialog = ref(null);
 
 const canDirectEmail = ['Brand', 'Agency'].includes(localStorage.getItem('role') || '');
 
@@ -565,16 +564,13 @@ function tierBadge(tier) {
   }[tier] ?? 'bg-secondary';
 }
 
-function openInlineAiAnalysis(video) {
-  videoAiDialog.value?.open({
-    videoId: video.videoId,
-    title: video.title,
-    channelName: detail.value?.creator?.channelName,
-    viewCount: video.viewCount,
-    likeCount: video.likeCount,
-    commentCount: video.commentCount,
-    publishedAt: video.publishedAt
-  }, detail.value?.creator?.channelName);
+function openLatestVideoAnalysis(video) {
+  const creatorId = detail.value?.creator?.creatorId || selectedCreator.value?.creatorId;
+  if (!creatorId) return;
+  router.push({
+    path: `/creator/${creatorId}/latest-video-analysis`,
+    query: { videoId: video?.videoId }
+  });
 }
 
 onMounted(() => {

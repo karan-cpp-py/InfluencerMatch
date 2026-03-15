@@ -207,7 +207,7 @@
                     <div class="d-flex gap-2 mt-2">
                       <button
                         class="btn btn-sm btn-outline-dark"
-                        @click="openInlineAiAnalysis(v)"
+                        @click="goToLatestVideoAnalysis(v?.videoId)"
                       >
                         Analyze with AI
                       </button>
@@ -222,19 +222,18 @@
         </div>
 
       </template>
-      <VideoAiAnalysisDialog ref="videoAiDialog" />
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../services/api';
 import { engagementMeta } from '../utils/engagement';
-import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route     = useRoute();
+const router    = useRouter();
 const creatorId = route.params.id;
 
 const data           = ref(null);
@@ -245,7 +244,6 @@ const scoreLoading   = ref(false);
 const scoreRefreshing= ref(false);
 const error          = ref('');
 const tooltip        = ref(null);
-const videoAiDialog  = ref(null);
 
 const engagementInfo = computed(() => {
   if (!data.value) return engagementMeta(null);
@@ -370,22 +368,16 @@ async function refreshAnalytics() {
 }
 
 
-function openInlineAiAnalysis(video) {
-  videoAiDialog.value?.open({
-    videoId: video.videoId,
-    title: video.title,
-    channelName: data.value?.channelName,
-    viewCount: video.views,
-    likeCount: video.likes,
-    commentCount: video.comments,
-    publishedAt: video.publishedAt
-  }, data.value?.channelName);
+function goToLatestVideoAnalysis(videoId = null) {
+  const query = {};
+  if (videoId) query.videoId = videoId;
+  router.push({ path: `/creator/${creatorId}/latest-video-analysis`, query });
 }
 
 function analyzeLatestTopVideo() {
   const latest = data.value?.topVideos?.[0];
   if (!latest) return;
-  openInlineAiAnalysis(latest);
+  goToLatestVideoAnalysis(latest.videoId);
 }
 async function fetchScore() {
   scoreLoading.value = true;

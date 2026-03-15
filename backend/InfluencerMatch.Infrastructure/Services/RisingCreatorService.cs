@@ -179,24 +179,36 @@ namespace InfluencerMatch.Infrastructure.Services
             if (rows.Count == 0)
                 return await ComputeRisingOnTheFlyAsync(topN, growthCategory, country);
 
-            return rows.Select(x => new RisingCreatorDto
+            return rows.Select(x =>
             {
-                CreatorId       = x.c.CreatorId,
-                ChannelName     = x.c.ChannelName  ?? string.Empty,
-                Platform        = x.c.Platform,
-                Category        = x.c.Category     ?? string.Empty,
-                Country         = x.c.Country      ?? string.Empty,
-                Subscribers     = x.c.Subscribers,
-                GrowthRate      = x.gs.GrowthRate,
-                GrowthCategory  = x.gs.GrowthCategory,
-                SubscriberDelta = x.gs.SubscriberDelta,
-                EngagementRate  = EngagementRateEstimator.EstimateOrStored(
-                    x.a?.EngagementRate,
-                    x.c.Subscribers,
-                    x.c.TotalViews,
-                    x.c.VideoCount,
-                    x.a?.AvgViews),
-                CalculatedAt    = x.gs.CalculatedAt
+                var effectiveRate = x.gs.BaselineSubscribers > 0
+                    ? x.gs.SubscriberDelta / (double)x.gs.BaselineSubscribers
+                    : x.gs.GrowthRate;
+
+                if (x.gs.SubscriberDelta == 0)
+                {
+                    effectiveRate = 0;
+                }
+
+                return new RisingCreatorDto
+                {
+                    CreatorId       = x.c.CreatorId,
+                    ChannelName     = x.c.ChannelName  ?? string.Empty,
+                    Platform        = x.c.Platform,
+                    Category        = x.c.Category     ?? string.Empty,
+                    Country         = x.c.Country      ?? string.Empty,
+                    Subscribers     = x.c.Subscribers,
+                    GrowthRate      = effectiveRate,
+                    GrowthCategory  = Categorize(effectiveRate),
+                    SubscriberDelta = x.gs.SubscriberDelta,
+                    EngagementRate  = EngagementRateEstimator.EstimateOrStored(
+                        x.a?.EngagementRate,
+                        x.c.Subscribers,
+                        x.c.TotalViews,
+                        x.c.VideoCount,
+                        x.a?.AvgViews),
+                    CalculatedAt    = x.gs.CalculatedAt
+                };
             }).ToList();
         }
 
