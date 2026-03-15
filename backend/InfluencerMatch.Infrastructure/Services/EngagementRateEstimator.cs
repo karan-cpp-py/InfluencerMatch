@@ -61,7 +61,19 @@ namespace InfluencerMatch.Infrastructure.Services
 
             // Some tables store engagement as percent points (e.g. 4.25 for 4.25%),
             // while downstream APIs expect a ratio (0.0425). Normalize before clamping.
-            return rate > 1 ? rate / 100.0 : rate;
+            if (rate > 1)
+            {
+                return rate / 100.0;
+            }
+
+            // Legacy rows may store percent points below 1 (e.g. 0.49 means 0.49%).
+            // Any value above our realistic max ratio is treated as percent points.
+            if (rate > MaxRate)
+            {
+                return rate / 100.0;
+            }
+
+            return rate;
         }
     }
 }

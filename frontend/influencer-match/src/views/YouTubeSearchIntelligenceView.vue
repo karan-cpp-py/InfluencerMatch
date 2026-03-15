@@ -96,17 +96,19 @@
                   </div>
                 </div>
                 <div class="d-flex flex-wrap gap-2 mb-3">
-                  <button class="btn btn-sm btn-outline-primary" @click="analyzeCreator(creator, 'last10')">Analyze Last 10</button>
-                  <button class="btn btn-sm btn-outline-primary" @click="analyzeCreator(creator, 'last20')">Analyze Last 20</button>
-                  <button class="btn btn-sm btn-outline-dark" @click="analyzeCreator(creator, 'channel')">Whole Channel</button>
+                  <button class="btn btn-sm action-btn action-btn-outline" @click="analyzeCreator(creator, 'last10')">Analyze Latest 10 Videos</button>
+                  <button class="btn btn-sm action-btn action-btn-outline" @click="analyzeCreator(creator, 'last20')">Analyze Latest 20 Videos</button>
+                  <button class="btn btn-sm action-btn action-btn-dark" @click="analyzeCreator(creator, 'channel')">Analyze Whole Channel</button>
                 </div>
                 <div class="mt-auto d-flex gap-2">
-                  <button class="btn btn-sm btn-primary flex-grow-1" @click="openCreatorAnalytics(creator)">Analytics</button>
+                  <button class="btn btn-sm btn-primary action-btn flex-grow-1" @click="openCreatorAnalytics(creator)">Channel Analytics</button>
                   <a :href="creator.channelUrl" target="_blank" class="btn btn-sm btn-outline-secondary">Open YT</a>
                 </div>
                 <div v-if="analysisByCreator[creatorAnalysisKey(creator)]" class="analysis-panel border-top p-3 mt-2">
                   <h6 class="mb-1">AI Analysis</h6>
-                  <div class="small text-muted">{{ analysisByCreator[creatorAnalysisKey(creator)].aiNarrative }}</div>
+                  <ul class="small mb-0 ps-3 analysis-points">
+                    <li v-for="(line, i) in analysisNarrativeLines(creator)" :key="`match-${creatorAnalysisKey(creator)}-${i}`">{{ line }}</li>
+                  </ul>
                 </div>
               </div>
             </article>
@@ -120,9 +122,9 @@
             <div class="col-xl-5">
               <div class="small text-muted mb-2">Bulk AI analysis queue</div>
               <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-sm btn-outline-primary" :disabled="bulkState.running" @click="analyzeTopCreators(5, 'last10')">Analyze Top 5 (Last 10)</button>
-                <button class="btn btn-sm btn-outline-primary" :disabled="bulkState.running" @click="analyzeTopCreators(10, 'last10')">Analyze Top 10 (Last 10)</button>
-                <button class="btn btn-sm btn-outline-dark" :disabled="bulkState.running" @click="analyzeTopCreators(10, 'last20')">Analyze Top 10 (Last 20)</button>
+                <button class="btn btn-sm action-btn action-btn-outline" :disabled="bulkState.running" @click="analyzeTopCreators(5, 'last10')">Analyze Top 5 (Latest 10 Videos)</button>
+                <button class="btn btn-sm action-btn action-btn-outline" :disabled="bulkState.running" @click="analyzeTopCreators(10, 'last10')">Analyze Top 10 (Latest 10 Videos)</button>
+                <button class="btn btn-sm action-btn action-btn-dark" :disabled="bulkState.running" @click="analyzeTopCreators(10, 'last20')">Analyze Top 10 (Latest 20 Videos)</button>
               </div>
               <div v-if="bulkState.running || bulkState.total > 0" class="mt-2">
                 <div class="d-flex justify-content-between small text-muted mb-1">
@@ -226,13 +228,13 @@
               </div>
 
               <div class="d-flex flex-wrap gap-2 mb-3">
-                <button class="btn btn-sm btn-outline-primary" :disabled="isAnalyzing(creator, 'last10') || bulkState.running" @click="analyzeCreator(creator, 'last10')">Analyze Last 10</button>
-                <button class="btn btn-sm btn-outline-primary" :disabled="isAnalyzing(creator, 'last20') || bulkState.running" @click="analyzeCreator(creator, 'last20')">Analyze Last 20</button>
-                <button class="btn btn-sm btn-outline-dark" :disabled="isAnalyzing(creator, 'channel') || bulkState.running" @click="analyzeCreator(creator, 'channel')">Analyze Whole Channel</button>
+                <button class="btn btn-sm action-btn action-btn-outline" :disabled="isAnalyzing(creator, 'last10') || bulkState.running" @click="analyzeCreator(creator, 'last10')">Analyze Latest 10 Videos</button>
+                <button class="btn btn-sm action-btn action-btn-outline" :disabled="isAnalyzing(creator, 'last20') || bulkState.running" @click="analyzeCreator(creator, 'last20')">Analyze Latest 20 Videos</button>
+                <button class="btn btn-sm action-btn action-btn-dark" :disabled="isAnalyzing(creator, 'channel') || bulkState.running" @click="analyzeCreator(creator, 'channel')">Analyze Whole Channel</button>
               </div>
 
               <div class="mt-auto d-flex gap-2">
-                <button class="btn btn-sm btn-primary flex-grow-1" @click="openCreatorAnalytics(creator)">Analytics</button>
+                <button class="btn btn-sm btn-primary action-btn flex-grow-1" @click="openCreatorAnalytics(creator)">Channel Analytics</button>
                 <router-link :to="`/creator/${creator.creatorId}/video-analytics`" class="btn btn-sm btn-outline-primary">Video</router-link>
                 <a :href="creator.channelUrl || `https://youtube.com/channel/${creator.channelId}`" target="_blank" class="btn btn-sm btn-outline-secondary">Open</a>
               </div>
@@ -252,7 +254,9 @@
                 <div class="col-4"><div class="metric-label">Avg ER</div><div class="fw-semibold">{{ percent(analysisByCreator[creatorAnalysisKey(creator)].averageEngagementRate) }}</div></div>
               </div>
 
-              <div class="small text-muted mb-2" v-if="analysisByCreator[creatorAnalysisKey(creator)].aiNarrative">{{ analysisByCreator[creatorAnalysisKey(creator)].aiNarrative }}</div>
+              <ul class="small mb-2 ps-3 analysis-points" v-if="analysisNarrativeLines(creator).length">
+                <li v-for="(line, i) in analysisNarrativeLines(creator)" :key="`card-${creatorAnalysisKey(creator)}-${i}`">{{ line }}</li>
+              </ul>
 
               <div class="d-flex flex-wrap gap-1 mb-2" v-if="analysisByCreator[creatorAnalysisKey(creator)].topKeywords?.length">
                 <span v-for="keyword in analysisByCreator[creatorAnalysisKey(creator)].topKeywords.slice(0, 6)" :key="`${creator.channelId}-${keyword}`" class="badge text-bg-light border">{{ keyword }}</span>
@@ -640,6 +644,20 @@ function creatorAnalysisKey(creator) {
   return `ch:${creator?.channelId || 'unknown'}`;
 }
 
+function analysisNarrativeLines(creator) {
+  const key = creatorAnalysisKey(creator);
+  const narrative = String(analysisByCreator.value?.[key]?.aiNarrative || '').trim();
+  if (!narrative) return [];
+
+  const lines = narrative
+    .split(/[\r\n]+|[.!?]\s+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return lines.length ? lines : [narrative];
+}
+
 function compact(value) {
   const n = Number(value || 0);
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -752,6 +770,27 @@ function engagementClass(value) {
 
 .analysis-panel {
   background: linear-gradient(180deg, #fcfcff 0%, #f8fafc 100%);
+}
+
+.analysis-points li {
+  margin-bottom: 0.28rem;
+  color: #475569;
+}
+
+.action-btn {
+  font-weight: 700;
+}
+
+.action-btn-outline {
+  border-color: rgba(29, 78, 216, 0.45);
+  color: #1d4ed8;
+  background: #ffffff;
+}
+
+.action-btn-dark {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
 }
 
 .compare-overlay {
