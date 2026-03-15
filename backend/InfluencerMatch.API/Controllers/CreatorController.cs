@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using InfluencerMatch.Application.DTOs;
 using InfluencerMatch.Application.Interfaces;
+using InfluencerMatch.Domain.Entities;
 using InfluencerMatch.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -79,8 +80,9 @@ namespace InfluencerMatch.API.Controllers
         /// <summary>Get the authenticated creator's profile.</summary>
         [HttpGet("profile")]
         [Authorize(Roles = "Creator")]
-        public async Task<IActionResult> GetProfile()
+        public async Task<IActionResult> GetProfile(CancellationToken ct)
         {
+            await EnsureCreatorProfileForCurrentUserAsync(ct);
             var profile = await _registration.GetProfileAsync(GetUserId());
             if (profile == null) return NotFound();
             return Ok(profile);
@@ -223,6 +225,7 @@ namespace InfluencerMatch.API.Controllers
         [Authorize(Roles = "Creator")]
         public async Task<IActionResult> GetDashboard(CancellationToken ct)
         {
+            await EnsureCreatorProfileForCurrentUserAsync(ct);
             var profile = await _registration.GetProfileAsync(GetUserId());
             if (profile == null)
                 return NotFound(new { error = "Creator profile not found." });
@@ -257,6 +260,7 @@ namespace InfluencerMatch.API.Controllers
         [Authorize(Roles = "Creator")]
         public async Task<IActionResult> GetCreatorInsights(CancellationToken ct)
         {
+            await EnsureCreatorProfileForCurrentUserAsync(ct);
             var insights = await _advancedAnalytics.GetCreatorSelfInsightsAsync(GetUserId(), ct);
             if (insights == null)
                 return NotFound(new { error = "Creator profile not found." });
@@ -383,6 +387,7 @@ namespace InfluencerMatch.API.Controllers
         {
             try
             {
+                await EnsureCreatorProfileForCurrentUserAsync(ct);
                 var result = await _registration.GetOnboardingStatusAsync(GetUserId(), ct);
                 return Ok(result);
             }
@@ -445,11 +450,40 @@ namespace InfluencerMatch.API.Controllers
 
         private async Task<int> GetCreatorProfileIdAsync()
         {
-            var userId  = GetUserId();
-            var profile = await _db.CreatorProfiles
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+            var profile = await EnsureCreatorProfileForCurrentUserAsync();
             return profile?.CreatorProfileId
                 ?? throw new InvalidOperationException("Creator profile not found.");
+        }
+
+        private async Task<CreatorProfile?> EnsureCreatorProfileForCurrentUserAsync(CancellationToken ct = default)
+        {
+            var userId = GetUserId();
+            var existing = await _db.CreatorProfiles
+                .FirstOrDefaultAsync(p => p.UserId == userId, ct);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            var user = await _db.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.UserId == userId, ct);
+            if (user == null || !string.Equals(user.Role, "Creator", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var bootstrapProfile = new CreatorProfile
+            {
+                UserId = userId,
+                Country = string.IsNullOrWhiteSpace(user.Country) ? "Unknown" : user.Country,
+                ContactEmail = user.Email,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.CreatorProfiles.Add(bootstrapProfile);
+            await _db.SaveChangesAsync(ct);
+            return bootstrapProfile;
         }
     }
 }

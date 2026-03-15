@@ -89,18 +89,18 @@
               </div>
 
               <div class="d-grid gap-2 mt-auto">
-                <button class="btn btn-sm btn-dark" @click="analyzeVideo(v)">
+                <button class="btn btn-sm trend-btn trend-btn-primary" @click="analyzeVideo(v)">
                   Analyze with AI
                 </button>
                 <button
-                  class="btn btn-sm btn-outline-primary"
+                  class="btn btn-sm trend-btn trend-btn-outline"
                   @click="openProfile(v)"
                   :disabled="!hasInternalProfile(v)"
                   :title="hasInternalProfile(v) ? 'Open creator profile' : 'Profile not linked in platform yet'"
                 >
                   View Profile
                 </button>
-                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Watch on YouTube</a>
+                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm trend-btn trend-btn-neutral">Watch on YouTube</a>
               </div>
             </div>
           </article>
@@ -245,6 +245,35 @@ onMounted(load);
   position: absolute;
   top: 8px;
   left: 8px;
+}
+
+.trend-btn {
+  width: 100%;
+  font-weight: 700;
+  border-width: 1px;
+  opacity: 1;
+}
+
+.trend-btn-primary {
+  color: #ffffff !important;
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+}
+
+.trend-btn-outline {
+  color: #1d4ed8 !important;
+  background: #ffffff !important;
+  border-color: #93c5fd !important;
+}
+
+.trend-btn-neutral {
+  color: #334155 !important;
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+
+.trend-btn:disabled {
+  opacity: 0.65;
 }
 
 </style>
