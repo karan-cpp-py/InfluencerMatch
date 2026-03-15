@@ -56,11 +56,6 @@ const routes = [
     component: () => import('../views/CreatorOnboardingView.vue'),
     meta: { requiresAuth: true, role: 'Creator' }
   },
-  {
-    path: '/creator/latest-video-analysis',
-    component: () => import('../views/LatestVideoAnalysisView.vue'),
-    meta: { requiresAuth: true, role: 'Creator' }
-  },
 
   {
     path: '/brand/waitlist',
@@ -80,13 +75,12 @@ const routes = [
   },
 
   // ── Brand discovery / analytics ────────────────────────────────────────
-  { path: '/brand/youtube-creators', component: () => import('../views/BrandYouTubeCreatorsView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
+  { path: '/brand/youtube-creators', component: () => import('../views/UnifiedCreatorDiscoveryView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
   { path: '/youtube/search-intelligence', component: () => import('../views/YouTubeSearchIntelligenceView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager', 'Creator'] } },
   { path: '/discovery',            component: () => import('../views/CreatorDiscovery.vue'),    meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
-  { path: '/creators/search',      component: () => import('../views/CreatorSearch.vue'),       meta: { requiresAuth: true, role: ['Brand', 'Agency', 'Individual', 'CreatorManager'] } },
+  { path: '/creators/search',      redirect: '/brand/youtube-creators?tab=search' },
   { path: '/creator/:id/analytics',       component: () => import('../views/CreatorAnalyticsView.vue'),  meta: { requiresAuth: true } },
   { path: '/creator/:id/video-analytics', component: () => import('../views/VideoAnalyticsView.vue'),     meta: { requiresAuth: true } },
-  { path: '/creator/:id/latest-video-analysis', component: () => import('../views/LatestVideoAnalysisView.vue'), meta: { requiresAuth: true } },
   { path: '/creators/leaderboard', component: () => import('../views/ScoreLeaderboard.vue'),    meta: { requiresAuth: true } },
   { path: '/creators/compare',     component: () => import('../views/CreatorCompare.vue'),      meta: { requiresAuth: true } },
   {
@@ -96,16 +90,11 @@ const routes = [
   },
   { path: '/creators/rising',      component: () => import('../views/RisingCreators.vue'),      meta: { requiresAuth: true } },
   {
-    path: '/brand/opportunities',
-    component: () => import('../views/BrandOpportunities.vue'),
-    meta: { requiresAuth: true, role: ['Brand', 'Agency'], strategyFeature: 'enableBrandActivation' }
-  },
-  {
     path: '/brand/creator-intelligence',
     component: () => import('../views/BrandCreatorIntelligenceView.vue'),
     meta: { requiresAuth: true, role: ['Brand', 'Agency'], strategyFeature: 'enableBrandActivation' }
   },
-  { path: '/videos/trending',      component: () => import('../views/TrendingVideos.vue'),      meta: { requiresAuth: true } },
+  { path: '/videos/trending',      component: () => import('../views/TrendingVideos.vue'),      meta: { requiresAuth: true, role: 'Creator' } },
 
   // ── Legacy Influencer / Brand ──────────────────────────────────────────
   { path: '/influencer',       component: InfluencerDashboard, meta: { requiresAuth: true, role: 'Influencer' } },
@@ -132,11 +121,16 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token');
+  const role = localStorage.getItem('role');
 
   await ensurePlatformConfigLoaded();
 
   if (to.meta.requiresAuth && !token) {
     return next('/login');
+  }
+
+  if (to.path === '/videos/trending' && role !== 'Creator') {
+    return next(homeRouteForRole(role));
   }
 
   // Role and plan/feature restrictions intentionally disabled — all pages are accessible to any logged-in user.

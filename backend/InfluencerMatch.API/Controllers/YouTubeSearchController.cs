@@ -20,13 +20,16 @@ namespace InfluencerMatch.API.Controllers
     {
         private readonly IYouTubeSearchIntelligenceService _service;
         private readonly ApplicationDbContext              _db;
+        private readonly ICreatorChannelService            _channel;
 
         public YouTubeSearchController(
             IYouTubeSearchIntelligenceService service,
-            ApplicationDbContext db)
+            ApplicationDbContext db,
+            ICreatorChannelService channel)
         {
             _service = service;
             _db      = db;
+            _channel = channel;
         }
 
         [HttpGet("search")]
@@ -100,7 +103,37 @@ namespace InfluencerMatch.API.Controllers
                     return Ok(new { resolved = true, creators = byName, searchQuery = handleOrName });
             }
 
-            return Ok(new { resolved = false, message = "Channel not found in platform index. Try General Search." });
+            // Fallback: use the same live channel-resolution logic as channel linking,
+            // but return transient data only (do not persist anything).
+            var live = await _channel.FetchLiveChannelByUrlAsync(url, ct);
+            if (live != null)
+            {
+                return Ok(new
+                {
+                    resolved = true,
+                    creator = new
+                    {
+                        creatorId = 0,
+                        channelId = live.ChannelId,
+                        channelName = live.ChannelName,
+                        category = "General",
+                        country = live.Country,
+                        language = (string?)null,
+                        subscribers = live.Subscribers,
+                        totalViews = live.TotalViews,
+                        videoCount = live.VideoCount,
+                        engagementRate = 0.0,
+                        thumbnailUrl = live.ThumbnailUrl,
+                        channelUrl = $"https://youtube.com/channel/{live.ChannelId}",
+                        creatorTier = live.CreatorTier,
+                        relevanceScore = 0.9,
+                        relevanceReason = "Live channel fetched via YouTube API (non-indexed preview)"
+                    },
+                    source = "live"
+                });
+            }
+
+            return Ok(new { resolved = false, message = "Channel could not be resolved. Check URL, API key, or quota." });
         }
 
         /// <summary>

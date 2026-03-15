@@ -48,7 +48,9 @@ namespace InfluencerMatch.Infrastructure.Services
             _db         = db;
             _httpFactory = httpFactory;
             _logger     = logger;
-            _apiKey     = config["YouTube:ApiKey"];
+            _apiKey     = config["YouTube:ApiKey"]
+                       ?? config["YouTube__ApiKey"]
+                       ?? config["YOUTUBE_API_KEY"];
         }
 
         // ── RefreshViralScoresAsync ───────────────────────────────────────────
@@ -78,6 +80,12 @@ namespace InfluencerMatch.Infrastructure.Services
             string? category = null,
             string? country = null)
         {
+            var live = await TryFetchLiveTrendingNowAsync(topN, category, country);
+            if (live.Count > 0)
+            {
+                return live;
+            }
+
             if (string.IsNullOrWhiteSpace(category)) category = null;
             if (string.IsNullOrWhiteSpace(country))  country  = null;
 
@@ -123,6 +131,126 @@ namespace InfluencerMatch.Infrastructure.Services
             }
 
             return rows;
+        }
+
+        private async Task<List<TrendingVideoDto>> TryFetchLiveTrendingNowAsync(
+            int topN,
+            string? category,
+            string? country)
+        {
+            if (!IsApiKeyConfigured()) return new List<TrendingVideoDto>();
+
+            var limit = Math.Clamp(topN <= 0 ? 20 : topN, 1, 50);
+            var region = string.IsNullOrWhiteSpace(country) ? "IN" : country.Trim().ToUpperInvariant();
+            var categoryId = MapCategoryToYouTubeId(category);
+
+            var client = _httpFactory.CreateClient();
+            var url = "https://www.googleapis.com/youtube/v3/videos"
+                + "?part=snippet,statistics,contentDetails"
+                + "&chart=mostPopular"
+                + $"&regionCode={Uri.EscapeDataString(region)}"
+                + (string.IsNullOrWhiteSpace(categoryId) ? "" : $"&videoCategoryId={categoryId}")
+                + $"&maxResults={limit}"
+                + $"&key={_apiKey}";
+
+            var response = await client.GetFromJsonAsync<YtTrendingResponse>(url);
+            var items = response?.items ?? new List<YtTrendingItem>();
+            if (items.Count == 0) return new List<TrendingVideoDto>();
+
+            var channelIds = items
+                .Select(i => i.snippet?.channelId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var subscriberMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            if (channelIds.Count > 0)
+            {
+                var chUrl = "https://www.googleapis.com/youtube/v3/channels"
+                    + "?part=statistics"
+                    + $"&id={string.Join(",", channelIds)}"
+                    + $"&key={_apiKey}";
+                var channels = await client.GetFromJsonAsync<YtChannelStatsResponse>(chUrl);
+                foreach (var ch in channels?.items ?? new List<YtChannelStatsItem>())
+                {
+                    var chId = ch.id ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(chId)) continue;
+                    subscriberMap[chId] = ch.statistics?.subscriberCount ?? 0;
+                }
+            }
+
+            var now = DateTime.UtcNow;
+            var scored = items
+                .Select(item =>
+                {
+                    var publishedAt = item.snippet?.publishedAt ?? now;
+                    var hours = Math.Max((now - publishedAt).TotalHours, 1.0);
+                    var views = item.statistics?.viewCount ?? 0;
+                    var likes = item.statistics?.likeCount ?? 0;
+                    var comments = item.statistics?.commentCount ?? 0;
+
+                    var velocity = views / hours;
+                    var accel = views / (hours * hours);
+                    var eng = views > 0 ? (likes + comments) / (double)views : 0;
+
+                    return new
+                    {
+                        item,
+                        publishedAt,
+                        hours,
+                        views,
+                        likes,
+                        comments,
+                        velocity,
+                        accel,
+                        eng
+                    };
+                })
+                .ToList();
+
+            var maxVel = scored.Max(x => x.velocity);
+            var maxAcc = scored.Max(x => x.accel);
+            var maxEng = scored.Max(x => x.eng);
+
+            return scored
+                .Select(x =>
+                {
+                    var nVel = maxVel > 0 ? x.velocity / maxVel : 0;
+                    var nAcc = maxAcc > 0 ? x.accel / maxAcc : 0;
+                    var nEng = maxEng > 0 ? x.eng / maxEng : 0;
+                    var score = Math.Round(0.5 * nVel + 0.3 * nAcc + 0.2 * nEng, 6);
+                    var channelId = x.item.snippet?.channelId ?? string.Empty;
+
+                    return new TrendingVideoDto
+                    {
+                        VideoId = x.item.id ?? string.Empty,
+                        Title = x.item.snippet?.title ?? "Untitled",
+                        ThumbnailUrl = x.item.snippet?.thumbnails?.high?.url
+                            ?? x.item.snippet?.thumbnails?.medium?.url
+                            ?? x.item.snippet?.thumbnails?.@default?.url,
+                        PublishedAt = x.publishedAt,
+                        HoursSincePublish = Math.Round(x.hours, 1),
+                        CreatorId = 0,
+                        ChannelName = x.item.snippet?.channelTitle ?? "YouTube Creator",
+                        Platform = "YouTube",
+                        Category = string.IsNullOrWhiteSpace(category) ? MapYouTubeCategoryId(x.item.snippet?.categoryId) : category!,
+                        Country = region,
+                        Subscribers = subscriberMap.TryGetValue(channelId, out var subs) ? subs : 0,
+                        ViewCount = x.views,
+                        LikeCount = x.likes,
+                        CommentCount = x.comments,
+                        ViewsVelocity = Math.Round(nVel, 6),
+                        GrowthAcceleration = Math.Round(nAcc, 6),
+                        EngagementMomentum = Math.Round(nEng, 6),
+                        ViralScore = score,
+                        CalculatedAt = now
+                    };
+                })
+                .OrderByDescending(v => v.ViralScore)
+                .ThenByDescending(v => v.ViewCount)
+                .Take(limit)
+                .ToList();
         }
 
         // ── YouTube API path ─────────────────────────────────────────────────
@@ -370,6 +498,51 @@ namespace InfluencerMatch.Infrastructure.Services
             !_apiKey!.Contains("YOUR", StringComparison.OrdinalIgnoreCase) &&
             !_apiKey.StartsWith("REPLACE", StringComparison.OrdinalIgnoreCase);
 
+        private static string? MapCategoryToYouTubeId(string? category)
+        {
+            var key = (category ?? string.Empty).Trim().ToLowerInvariant();
+            return key switch
+            {
+                "film" or "movies" or "film & animation" => "1",
+                "autos" or "automobile" => "2",
+                "music" => "10",
+                "pets" or "animals" => "15",
+                "sports" => "17",
+                "travel" or "events" => "19",
+                "gaming" => "20",
+                "vlog" or "people" => "22",
+                "comedy" => "23",
+                "entertainment" => "24",
+                "news" or "politics" => "25",
+                "education" => "27",
+                "science" or "tech" or "technology" => "28",
+                "howto" or "style" or "beauty" or "fashion" => "26",
+                _ => null
+            };
+        }
+
+        private static string MapYouTubeCategoryId(string? categoryId)
+        {
+            return (categoryId ?? string.Empty).Trim() switch
+            {
+                "1" => "Film",
+                "2" => "Autos",
+                "10" => "Music",
+                "15" => "Pets",
+                "17" => "Sports",
+                "19" => "Travel",
+                "20" => "Gaming",
+                "22" => "People",
+                "23" => "Comedy",
+                "24" => "Entertainment",
+                "25" => "News",
+                "26" => "Howto",
+                "27" => "Education",
+                "28" => "Tech",
+                _ => "General"
+            };
+        }
+
         // ── Internal YouTube API response shapes ──────────────────────────────────────────
 
         // PlaylistItems response — 1 quota unit to list recent uploads
@@ -403,6 +576,63 @@ namespace InfluencerMatch.Infrastructure.Services
                 public long? likeCount    { get; set; }
                 public long? commentCount { get; set; }
             }
+        }
+
+        private class YtTrendingResponse
+        {
+            public List<YtTrendingItem>? items { get; set; }
+        }
+
+        private class YtTrendingItem
+        {
+            public string? id { get; set; }
+            public YtTrendingSnippet? snippet { get; set; }
+            public YtTrendingStats? statistics { get; set; }
+        }
+
+        private class YtTrendingSnippet
+        {
+            public string? title { get; set; }
+            public string? channelId { get; set; }
+            public string? channelTitle { get; set; }
+            public DateTime? publishedAt { get; set; }
+            public string? categoryId { get; set; }
+            public YtTrendingThumbs? thumbnails { get; set; }
+        }
+
+        private class YtTrendingThumbs
+        {
+            public YtTrendingThumb? @default { get; set; }
+            public YtTrendingThumb? medium { get; set; }
+            public YtTrendingThumb? high { get; set; }
+        }
+
+        private class YtTrendingThumb
+        {
+            public string? url { get; set; }
+        }
+
+        private class YtTrendingStats
+        {
+            public long? viewCount { get; set; }
+            public long? likeCount { get; set; }
+            public long? commentCount { get; set; }
+        }
+
+        private class YtChannelStatsResponse
+        {
+            public List<YtChannelStatsItem>? items { get; set; }
+        }
+
+        private class YtChannelStatsItem
+        {
+            public string? id { get; set; }
+            public YtChannelStats? statistics { get; set; }
+        }
+
+        private class YtChannelStats
+        {
+            public long? subscriberCount { get; set; }
         }
     }
 }

@@ -121,9 +121,9 @@
                   <div class="small fw-semibold">{{ v.title }}</div>
                   <div class="small text-muted">{{ compact(v.viewCount) }} views · {{ fmtDate(v.publishedAt) }}</div>
                 </div>
-                <router-link :to="`/creator/${detail.creator?.creatorId}/latest-video-analysis?videoId=${v.youtubeVideoId}&videoTitle=${encodeURIComponent(v.title || '')}`" class="btn btn-sm btn-outline-dark" v-if="detail.creator?.creatorId">
+                <button class="btn btn-sm btn-outline-dark" @click="openInlineAiAnalysis(v)" v-if="detail.creator?.creatorId">
                   Analyze with AI
-                </router-link>
+                </button>
               </div>
             </div>
           </div>
@@ -150,12 +150,15 @@
         </div>
       </div>
     </div>
+
+    <VideoAiAnalysisDialog ref="videoAiDialog" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref, reactive } from 'vue';
 import api from '../services/api';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const items = ref([]);
 const total = ref(0);
@@ -168,6 +171,7 @@ const refreshingAiId = ref(null);
 const deletingId = ref(null);
 const savingEdit = ref(false);
 const editing = ref(null);
+const videoAiDialog = ref(null);
 
 const filters = reactive({
   query: '',
@@ -210,6 +214,18 @@ function aiBadgeClass(score) {
   if (n >= 45) return 'bg-warning text-dark';
   if (n > 0) return 'bg-secondary';
   return 'bg-light text-dark border';
+}
+
+function openInlineAiAnalysis(video) {
+  videoAiDialog.value?.open({
+    videoId: video.youtubeVideoId,
+    title: video.title,
+    channelName: detail.value?.creator?.channelName,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    publishedAt: video.publishedAt
+  }, detail.value?.creator?.channelName || detail.value?.profile?.userName);
 }
 
 async function loadList() {

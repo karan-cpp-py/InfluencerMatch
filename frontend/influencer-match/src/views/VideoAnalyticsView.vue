@@ -49,9 +49,9 @@
               <router-link :to="`/creator/${creatorId}/analytics`" class="btn btn-sm btn-outline-primary">
                 Channel Analytics
               </router-link>
-              <router-link :to="`/creator/${creatorId}/latest-video-analysis`" class="btn btn-sm btn-outline-dark">
+              <button class="btn btn-sm btn-outline-dark" @click="analyzeLatestVideo" :disabled="!data?.videos?.length">
                 AI Latest Video
-              </router-link>
+              </button>
             </div>
           </div>
         </div>
@@ -318,6 +318,8 @@
         <button class="btn-close btn-sm" @click="refreshMsg=''"></button>
       </div>
 
+      <VideoAiAnalysisDialog ref="videoAiDialog" />
+
     </div>
   </div>
 </template>
@@ -326,6 +328,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route      = useRoute();
 const creatorId  = route.params.id;
@@ -335,6 +338,7 @@ const loading     = ref(true);
 const loadError   = ref('');
 const refreshing  = ref(false);
 const refreshMsg  = ref('');
+const videoAiDialog = ref(null);
 
 // Filters
 const typeFilter  = ref('All');
@@ -454,6 +458,21 @@ async function doRefresh() {
   } finally {
     refreshing.value = false;
   }
+}
+
+function analyzeLatestVideo() {
+  const latest = data.value?.videos?.[0];
+  if (!latest) return;
+
+  videoAiDialog.value?.open({
+    videoId: latest.youtubeVideoId,
+    title: latest.title,
+    channelName: data.value?.channelName,
+    viewCount: latest.views,
+    likeCount: latest.likes,
+    commentCount: latest.comments,
+    publishedAt: latest.publishedAt
+  }, data.value?.channelName);
 }
 
 onMounted(loadData);

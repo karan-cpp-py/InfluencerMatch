@@ -524,12 +524,12 @@
                           <div class="fw-semibold small text-truncate">{{ video.title }}</div>
                           <div class="small text-muted">{{ compact(video.viewCount) }} views · {{ formatDate(video.publishedAt) }}</div>
                           <div class="mt-1">
-                            <router-link
-                              :to="`/creator/${selectedMatch.creatorId}/latest-video-analysis?videoId=${video.youtubeVideoId}&videoTitle=${encodeURIComponent(video.title || '')}`"
+                            <button
                               class="btn btn-sm btn-outline-dark"
+                              @click="openInlineAiAnalysis(video)"
                             >
                               Analyze with AI
-                            </router-link>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -543,6 +543,8 @@
         </div>
       </div>
     </div>
+
+    <VideoAiAnalysisDialog ref="videoAiDialog" />
   </div>
 </template>
 
@@ -551,6 +553,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../services/api';
 import { engagementMeta } from '../utils/engagement';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const importedCreatorProfileOffset = 1_000_000_000;
 const usdToInr = 83;
@@ -581,6 +584,7 @@ const campaignContext = ref(null);
 const ytPreviewLoading = ref(false);
 const ytPreviewError = ref('');
 const ytPreviewResult = ref(null);
+const videoAiDialog = ref(null);
 const ytPreviewForm = ref({
   query: '',
   countryCode: 'IN',
@@ -709,6 +713,18 @@ const matchReasons = computed(() => {
   reasons.push(`Estimated sponsorship baseline is ₹${sponsorshipRangeLabel.value}.`);
   return reasons;
 });
+
+function openInlineAiAnalysis(video) {
+  videoAiDialog.value?.open({
+    videoId: video.youtubeVideoId,
+    title: video.title,
+    channelName: detailData.value?.channelName,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    publishedAt: video.publishedAt
+  }, detailData.value?.channelName);
+}
 
 onMounted(async () => {
   await applyCampaignPrefillFromRoute();

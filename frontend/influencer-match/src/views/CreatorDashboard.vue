@@ -18,12 +18,13 @@
           >
             Contact Brands
           </a>
-          <router-link
-            to="/creator/latest-video-analysis"
+          <button
             class="btn btn-sm btn-light fw-semibold"
+            @click="openLatestCreatorVideoAnalysis"
+            :disabled="recentVideos.length === 0"
           >
             AI Latest Video
-          </router-link>
+          </button>
         </div>
       </section>
 
@@ -299,10 +300,10 @@
                 <div class="small text-muted mt-1 mb-2">{{ fmtDate(v.publishedAt) }}</div>
                 <!-- Per-video analyse button -->
                 <div class="mt-auto">
-                  <router-link
-                    :to="`/creator/latest-video-analysis`"
+                  <button
                     class="btn btn-sm btn-outline-primary w-100"
-                  >🔍 Analyse with AI</router-link>
+                    @click="openInlineAiAnalysis(v)"
+                  >🔍 Analyse with AI</button>
                 </div>
               </div>
             </div>
@@ -541,6 +542,8 @@
           </div>
         </div>
       </div>
+
+      <VideoAiAnalysisDialog ref="videoAiDialog" />
     </div>
     </div>
   </div>
@@ -553,6 +556,7 @@ import api from '../services/api';
 import { authUserName } from '../services/auth';
 import { trackFunnelEvent } from '../services/funnel';
 import { engagementMeta } from '../utils/engagement';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route = useRoute();
 
@@ -586,6 +590,25 @@ const oauthCode = ref('');
 // Videos
 const recentVideos = ref([]);
 const pendingCollabs = ref(0);
+const videoAiDialog = ref(null);
+
+function openInlineAiAnalysis(video) {
+  videoAiDialog.value?.open({
+    videoId: video.youtubeVideoId,
+    title: video.title,
+    channelName: channel.value?.channelName,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    publishedAt: video.publishedAt
+  }, channel.value?.channelName || profile.value?.name || userName.value);
+}
+
+function openLatestCreatorVideoAnalysis() {
+  const latest = recentVideos.value[0];
+  if (!latest) return;
+  openInlineAiAnalysis(latest);
+}
 
 // Bulk AI video analysis
 const bulkAnalysisLoading = ref(false);

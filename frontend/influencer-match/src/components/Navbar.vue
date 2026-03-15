@@ -48,10 +48,10 @@
             <router-link class="nav-link" to="/creator-dashboard">My Dashboard</router-link>
           </li>
           <li v-if="token && role === 'Creator'" class="nav-item">
-            <router-link class="nav-link" to="/creator/latest-video-analysis">Video Analysis</router-link>
+            <router-link class="nav-link" to="/youtube/search-intelligence">Competitor Search</router-link>
           </li>
           <li v-if="token && role === 'Creator'" class="nav-item">
-            <router-link class="nav-link" to="/youtube/search-intelligence">Competitor Search</router-link>
+            <router-link class="nav-link" to="/videos/trending">Trending on YouTube</router-link>
           </li>
 
           <!-- SuperAdmin links -->
@@ -93,14 +93,11 @@
               <ul class="dropdown-menu dropdown-menu-dark">
                 <li><router-link class="dropdown-item" to="/brand/youtube-creators">📺 YouTube Catalogue</router-link></li>
                 <li><router-link class="dropdown-item" to="/youtube/search-intelligence">🎯 YouTube Search Intelligence</router-link></li>
-                <li><router-link class="dropdown-item" to="/creators/search">🔎 Creator Search</router-link></li>
                 <li><router-link class="dropdown-item" to="/creators/rising">🚀 Rising Creators</router-link></li>
-                <li><router-link class="dropdown-item" to="/videos/trending">🔥 Trending Videos</router-link></li>
                 <template v-if="brandOpsRoles.includes(role) && platformConfig.features.enableBrandActivation">
                   <li><hr class="dropdown-divider"/></li>
                   <li><router-link class="dropdown-item" to="/brand/creator-intelligence">🧠 Creator Intelligence</router-link></li>
                   <li><router-link class="dropdown-item" to="/brand/analytics">📊 Brand Analytics</router-link></li>
-                  <li><router-link class="dropdown-item" to="/brand/opportunities">💡 Opportunities</router-link></li>
                 </template>
               </ul>
             </li>

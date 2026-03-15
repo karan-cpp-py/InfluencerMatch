@@ -227,7 +227,7 @@ const primaryCta = computed(() => {
     return platformConfig.features?.enableBrandActivation
       ? { label: 'Create Campaign', to: '/brand' }
       : { label: 'Join Brand Waitlist', to: '/brand/waitlist' };
-  if (r === 'Individual' || r === 'CreatorManager') return { label: 'Search Creators', to: '/creators/search' };
+  if (r === 'Individual' || r === 'CreatorManager') return { label: 'Search Creators', to: '/brand/youtube-creators?tab=search' };
   if (r === 'SuperAdmin') return { label: 'Open Admin Panel', to: '/admin' };
   return { label: 'Explore', to: '/creators/leaderboard' };
 });
@@ -236,18 +236,18 @@ const quickLinks = computed(() => {
   const r = role.value;
   if (r === 'Creator') return [
     { icon: '📊', label: 'Dashboard',        to: '/creator-dashboard' },
-    { icon: '🎬', label: 'Video Analysis',   to: '/creator/latest-video-analysis' },
+    { icon: '🎬', label: 'Trending + AI Analysis',   to: '/videos/trending' },
     { icon: '🔍', label: 'Competitor Search',to: '/youtube/search-intelligence' },
   ];
   if (r === 'Brand' || r === 'Agency') return [
     ...(platformConfig.features?.enableBrandActivation ? [{ icon: '📋', label: 'Campaigns', to: '/brand/campaigns' }] : []),
     { icon: '🎯', label: 'Search Intelligence', to: '/youtube/search-intelligence' },
-    { icon: '🔎', label: 'Creator Search',      to: '/creators/search' },
+    { icon: '🔎', label: 'Creator Search',      to: '/brand/youtube-creators?tab=search' },
     { icon: '👥', label: 'Team Workspace',       to: '/workspace/team' },
   ];
   if (r === 'Individual' || r === 'CreatorManager') return [
     { icon: '🎯', label: 'Search Intelligence', to: '/youtube/search-intelligence' },
-    { icon: '🔎', label: 'Creator Search',      to: '/creators/search' },
+    { icon: '🔎', label: 'Creator Search',      to: '/brand/youtube-creators?tab=search' },
     { icon: '🚀', label: 'Rising Creators',     to: '/creators/rising' },
   ];
   if (r === 'SuperAdmin') return [{ icon: '⚙️', label: 'Admin Panel', to: '/admin' }];
@@ -281,7 +281,7 @@ const featureGroups = computed(() => {
       cards: [
         { icon: '🎬', title: 'Latest Video AI Analysis', tag: 'AI Powered',
           desc: 'Instant AI breakdown of your most recent YouTube upload: sentiment, pacing, engagement drivers, and actionable improvement tips.',
-          to: '/creator/latest-video-analysis' },
+          to: '/videos/trending' },
         { icon: '📊', title: 'Channel Health Scorecard', tag: 'Analytics',
           desc: 'Composite health score, audience quality indicators, suspicious engagement ratio, volatility score, and your optimal posting windows.',
           to: '/creator-dashboard' },
@@ -342,11 +342,8 @@ const featureGroups = computed(() => {
         { icon: '🎯', title: 'YouTube Search Intelligence', tag: 'AI + Live API',
           desc: 'Search YouTube live, rank results with AI scoring, bulk-analyze channels, compare up to 4 creators, and save shortlists to your workspace.',
           to: '/youtube/search-intelligence' },
-        { icon: '🔎', title: 'Creator Search', tag: 'Database',
-          desc: 'Filter the full creator database by niche, subscriber count, engagement rate, language, and country to find the exact right fit.',
-          to: '/creators/search' },
         { icon: '📺', title: 'YouTube Catalogue', tag: 'Catalogue',
-          desc: 'Browse the complete catalogue of indexed YouTube channels with verified subscriber counts, engagement rates, and audience breakdowns.',
+          desc: 'Browse registered creator catalogue and advanced search in one unified command center.',
           to: '/brand/youtube-creators' },
         { icon: '🚀', title: 'Rising Creators', tag: 'Momentum',
           desc: 'Spot fast-growing channels before they peak — ranked by subscriber velocity and momentum score so you can move first.',
@@ -369,9 +366,6 @@ const featureGroups = computed(() => {
           { icon: '📊', title: 'Brand Analytics', tag: 'Performance',
             desc: 'Analyse your brand mention trends, campaign sentiment distribution, creator reach metrics, and ROI signals over rolling time windows.',
             to: '/brand/analytics' },
-          { icon: '💡', title: 'AI Opportunities', tag: 'AI Matched',
-            desc: 'AI-surfaced creator partnership opportunities matched to your campaign goals, audience overlap, and historical performance patterns.',
-            to: '/brand/opportunities' },
         ],
       });
     }
@@ -404,11 +398,8 @@ const featureGroups = computed(() => {
         { icon: '🎯', title: 'YouTube Search Intelligence', tag: 'AI + Live',
           desc: 'Search YouTube live via the Data API, rank channels with AI scoring, and compare up to 4 creators side-by-side in a single view.',
           to: '/youtube/search-intelligence' },
-        { icon: '🔎', title: 'Creator Search', tag: 'Search',
-          desc: 'Full-text and filter-based search across all indexed creators — narrow by niche, metrics, language, and country.',
-          to: '/creators/search' },
         { icon: '📺', title: 'YouTube Catalogue', tag: 'Catalogue',
-          desc: 'Browse all indexed YouTube channels with live-verified metrics, subscriber counts, and audience engagement rates.',
+          desc: 'Use one unified page for YouTube catalogue intelligence plus advanced creator search filters.',
           to: '/brand/youtube-creators' },
         { icon: '🚀', title: 'Rising Creators', tag: 'Trending',
           desc: 'Monitor fast-growing channels ranked by subscriber velocity and momentum score — spot breakout creators early.',

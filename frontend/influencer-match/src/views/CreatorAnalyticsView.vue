@@ -47,7 +47,7 @@
                 Refresh
               </button>
               <router-link :to="`/creator/${creatorId}/video-analytics`" class="btn btn-sm btn-outline-primary">📊 Video Analytics</router-link>
-              <router-link :to="`/creator/${creatorId}/latest-video-analysis`" class="btn btn-sm btn-outline-dark">AI Latest Video</router-link>
+              <button class="btn btn-sm btn-outline-dark" @click="analyzeLatestTopVideo" :disabled="!data.topVideos?.length">AI Latest Video</button>
               <router-link :to="`/creators/compare?creatorId1=${creatorId}`" class="btn btn-sm btn-outline-secondary">Compare ⇄</router-link>
               <a v-if="data.channelId" :href="`https://youtube.com/channel/${data.channelId}`" target="_blank"
                 class="btn btn-sm btn-outline-danger">YouTube ↗</a>
@@ -205,12 +205,12 @@
                       <span>👍 {{ compact(v.likes) }}</span>
                     </div>
                     <div class="d-flex gap-2 mt-2">
-                      <router-link
-                        :to="`/creator/${creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
+                      <button
                         class="btn btn-sm btn-outline-dark"
+                        @click="openInlineAiAnalysis(v)"
                       >
                         Analyze with AI
-                      </router-link>
+                      </button>
                       <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" class="btn btn-sm btn-outline-secondary">Watch</a>
                     </div>
                   </div>
@@ -222,6 +222,7 @@
         </div>
 
       </template>
+      <VideoAiAnalysisDialog ref="videoAiDialog" />
     </div>
   </div>
 </template>
@@ -231,6 +232,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../services/api';
 import { engagementMeta } from '../utils/engagement';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const route     = useRoute();
 const creatorId = route.params.id;
@@ -243,6 +245,7 @@ const scoreLoading   = ref(false);
 const scoreRefreshing= ref(false);
 const error          = ref('');
 const tooltip        = ref(null);
+const videoAiDialog  = ref(null);
 
 const engagementInfo = computed(() => {
   if (!data.value) return engagementMeta(null);
@@ -366,6 +369,24 @@ async function refreshAnalytics() {
   }
 }
 
+
+function openInlineAiAnalysis(video) {
+  videoAiDialog.value?.open({
+    videoId: video.videoId,
+    title: video.title,
+    channelName: data.value?.channelName,
+    viewCount: video.views,
+    likeCount: video.likes,
+    commentCount: video.comments,
+    publishedAt: video.publishedAt
+  }, data.value?.channelName);
+}
+
+function analyzeLatestTopVideo() {
+  const latest = data.value?.topVideos?.[0];
+  if (!latest) return;
+  openInlineAiAnalysis(latest);
+}
 async function fetchScore() {
   scoreLoading.value = true;
   try {

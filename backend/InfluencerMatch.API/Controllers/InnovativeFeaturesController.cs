@@ -95,6 +95,7 @@ namespace InfluencerMatch.API.Controllers
         // GET /api/videos/trending?topN=50&category=Gaming&country=US
 
         [HttpGet("videos/trending")]
+        [Authorize(Roles = "Creator")]
         public async Task<IActionResult> GetTrendingVideos(
             [FromQuery] int     topN     = 50,
             [FromQuery] string? category = null,

@@ -6,7 +6,7 @@
       <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-2">
         <div>
           <h3 class="fw-bold mb-1">YouTube Creator Catalogue</h3>
-          <p class="text-muted mb-0">Browse {{ totalCount.toLocaleString() }} imported YouTube creators with full analytics and contact info.</p>
+          <p class="text-muted mb-0">Browse {{ totalCount.toLocaleString() }} registered YouTube creators with full analytics and contact info.</p>
         </div>
       </div>
 
@@ -189,7 +189,7 @@
       <div class="detail-panel" @click.stop>
         <button class="btn btn-sm btn-outline-secondary float-end" @click="selectedCreator = null">✕ Close</button>
         <h5 class="fw-bold mb-1">{{ selectedCreator.channelName }}</h5>
-        <small class="text-muted">Imported YouTube Creator</small>
+        <small class="text-muted">Registered YouTube Creator</small>
 
         <div v-if="detailLoading" class="text-center py-4">
           <div class="spinner-border text-primary" role="status"></div>
@@ -302,12 +302,12 @@
                     <small class="text-success fw-semibold">{{ v.engagementRate?.toFixed(2) }}%</small>
                   </div>
                   <div class="mt-2 d-flex gap-2">
-                    <router-link
-                      :to="`/creator/${detail.creator.creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
+                    <button
                       class="btn btn-sm btn-outline-dark"
+                      @click="openInlineAiAnalysis(v)"
                     >
                       Analyze with AI
-                    </router-link>
+                    </button>
                     <a :href="'https://youtube.com/watch?v=' + v.videoId" target="_blank"
                       class="btn btn-sm btn-outline-secondary">Watch</a>
                   </div>
@@ -363,12 +363,15 @@
       </div>
     </div>
 
+    <VideoAiAnalysisDialog ref="videoAiDialog" />
+
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import api from '../services/api.js';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const creators    = ref([]);
 const totalCount  = ref(0);
@@ -386,6 +389,7 @@ const readiness       = ref(null);
 const opportunityRadar = ref(null);
 const regionalLanguage = ref(null);
 const emailActionMessage = ref('');
+const videoAiDialog = ref(null);
 
 const canDirectEmail = ['Brand', 'Agency'].includes(localStorage.getItem('role') || '');
 
@@ -559,6 +563,18 @@ function tierBadge(tier) {
     'Micro':   'bg-info text-dark',
     'Nano':    'bg-secondary',
   }[tier] ?? 'bg-secondary';
+}
+
+function openInlineAiAnalysis(video) {
+  videoAiDialog.value?.open({
+    videoId: video.videoId,
+    title: video.title,
+    channelName: detail.value?.creator?.channelName,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    publishedAt: video.publishedAt
+  }, detail.value?.creator?.channelName);
 }
 
 onMounted(() => {

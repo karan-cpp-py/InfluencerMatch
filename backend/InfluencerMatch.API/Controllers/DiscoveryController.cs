@@ -225,7 +225,7 @@ public class DiscoveryController : ControllerBase
     // ── Brand-facing: YouTube creator catalogue ─────────────────────────────
 
     /// <summary>
-    /// Returns YouTube creators with valid channel IDs (registered + imported).
+    /// Returns YouTube creators with valid channel IDs from registered users only.
     /// Paginated and filterable. Accessible to any authenticated brand/user.
     /// GET /api/discovery/youtube-creators
     /// </summary>
@@ -244,8 +244,8 @@ public class DiscoveryController : ControllerBase
     {
         if (pageSize > 100) pageSize = 100;
 
-        // Uniform scope: all creators with valid channel IDs.
-        var query = _db.Creators.Where(c => c.ChannelId != null && c.ChannelId != "");
+        // Registered creators only: filter out imported/non-user-linked rows.
+        var query = _db.Creators.Where(c => c.UserId != null && c.ChannelId != null && c.ChannelId != "");
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.ChannelName != null &&
@@ -323,7 +323,7 @@ public class DiscoveryController : ControllerBase
     public async Task<IActionResult> GetYouTubeCreatorDetail(int creatorId)
     {
         var creator = await _db.Creators
-            .Where(c => c.CreatorId == creatorId && c.ChannelId != null && c.ChannelId != "")
+            .Where(c => c.CreatorId == creatorId && c.UserId != null && c.ChannelId != null && c.ChannelId != "")
             .Select(c => new {
                 c.CreatorId,
                 c.ChannelId,
@@ -374,14 +374,14 @@ public class DiscoveryController : ControllerBase
     }
 
     /// <summary>
-    /// Returns distinct categories for all YouTube creators with valid channel IDs.
+    /// Returns distinct categories for registered YouTube creators with valid channel IDs.
     /// GET /api/discovery/youtube-creators/categories
     /// </summary>
     [HttpGet("youtube-creators/categories")]
     public async Task<IActionResult> GetYouTubeCreatorCategories()
     {
         var cats = await _db.Creators
-            .Where(c => c.ChannelId != null && c.ChannelId != "" && c.Category != null && c.Category != "")
+            .Where(c => c.UserId != null && c.ChannelId != null && c.ChannelId != "" && c.Category != null && c.Category != "")
             .Select(c => c.Category!)
             .Distinct()
             .OrderBy(c => c)
@@ -400,6 +400,9 @@ public class DiscoveryController : ControllerBase
         [FromQuery] string? brandCountry = null,
         [FromQuery] string? brandLanguage = null)
     {
+        var exists = await _db.Creators.AnyAsync(c => c.CreatorId == creatorId && c.UserId != null);
+        if (!exists) return NotFound();
+
         var insights = await _advancedAnalytics.GetCreatorInsightsAsync(
             creatorId,
             brandCategory,
@@ -420,6 +423,9 @@ public class DiscoveryController : ControllerBase
         [FromQuery] string? brandCountry = null,
         [FromQuery] string? brandLanguage = null)
     {
+        var exists = await _db.Creators.AnyAsync(c => c.CreatorId == creatorId && c.UserId != null);
+        if (!exists) return NotFound();
+
         var fit = await _advancedAnalytics.GetCreatorBrandFitAsync(
             creatorId,
             brandCategory,
@@ -444,6 +450,9 @@ public class DiscoveryController : ControllerBase
     [HttpGet("youtube-creators/{creatorId:int}/readiness")]
     public async Task<IActionResult> GetSponsorshipReadiness(int creatorId)
     {
+        var exists = await _db.Creators.AnyAsync(c => c.CreatorId == creatorId && c.UserId != null);
+        if (!exists) return NotFound();
+
         var result = await _advancedAnalytics.GetSponsorshipReadinessAsync(creatorId);
         if (result == null) return NotFound();
         return Ok(result);

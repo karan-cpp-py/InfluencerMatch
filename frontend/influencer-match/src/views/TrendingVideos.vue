@@ -1,194 +1,124 @@
 <template>
-  <div class="container-fluid py-4">
-    <!-- Header -->
-    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-      <div>
-        <h2 class="mb-0 fw-bold">
-          <span class="me-2">🔥</span>Trending Videos
-        </h2>
-        <p class="text-muted mb-0 small">Viral Content Prediction — scored by velocity, acceleration & engagement</p>
-      </div>
-      <button class="btn btn-primary btn-sm" @click="refresh" :disabled="refreshing">
-        <span v-if="refreshing" class="spinner-border spinner-border-sm me-1"></span>
-        {{ refreshing ? 'Refreshing…' : '↺ Refresh Scores' }}
-      </button>
-    </div>
-
-    <!-- Algorithm explainer -->
-    <div class="alert alert-info py-2 small mb-3">
-      <strong>Algorithm:</strong>
-      ViralScore = 0.5 × <em>ViewsVelocity</em> + 0.3 × <em>GrowthAcceleration</em> + 0.2 × <em>EngagementMomentum</em>
-      &nbsp;|&nbsp; All components normalised 0–1 across the batch.
-    </div>
-
-    <!-- Filters -->
-    <div class="row g-2 mb-4">
-      <div class="col-auto">
-        <select class="form-select form-select-sm" v-model="filters.category" @change="load">
-          <option value="">All Categories</option>
-          <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <select class="form-select form-select-sm" v-model="filters.country" @change="load">
-          <option value="">All Countries</option>
-          <option v-for="c in countries" :key="c" :value="c">{{ c }}</option>
-        </select>
-      </div>
-      <div class="col-auto">
-        <select class="form-select form-select-sm" v-model.number="filters.topN" @change="load">
-          <option :value="20">Top 20</option>
-          <option :value="50">Top 50</option>
-          <option :value="100">Top 100</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Loading / empty states -->
-    <div v-if="loading" class="text-center py-5">
-      <div class="spinner-border text-primary"></div>
-      <p class="mt-2 text-muted">Loading trending videos…</p>
-    </div>
-
-    <div v-else-if="error" class="alert alert-danger">{{ error }}</div>
-
-    <div v-else-if="videos.length === 0" class="alert alert-secondary">
-      No trending videos found. Click <strong>↺ Refresh Scores</strong> to compute viral scores.
-    </div>
-
-    <!-- Video grid -->
-    <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
-      <div v-for="(v, idx) in videos" :key="v.videoId" class="col">
-        <div class="card h-100 shadow-sm border-0 position-relative">
-
-          <!-- Rank badge -->
-          <span class="position-absolute top-0 start-0 m-2 badge bg-dark opacity-75">#{{ idx + 1 }}</span>
-
-          <!-- Thumbnail -->
-          <div class="ratio ratio-16x9 bg-dark overflow-hidden rounded-top">
-            <img
-              v-if="v.thumbnailUrl"
-              :src="v.thumbnailUrl"
-              :alt="v.title"
-              class="img-fluid w-100 h-100"
-              style="object-fit:cover"
-            />
-            <div v-else class="d-flex align-items-center justify-content-center bg-secondary text-white fs-4">
-              📹
-            </div>
+  <div class="trending-shell py-4">
+    <div class="container-fluid" style="max-width: 1400px;">
+      <section class="hero mb-4">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div>
+            <div class="hero-kicker mb-2">Creator Only</div>
+            <h2 class="fw-bold mb-1">Trending on YouTube Today</h2>
+            <p class="mb-0 text-muted">Live feed from YouTube most-popular API. Fresh fetch every visit with AI video analysis actions.</p>
           </div>
-
-          <div class="card-body pb-2">
-            <!-- Title -->
-            <h6 class="card-title text-truncate mb-1" :title="v.title">{{ v.title }}</h6>
-
-            <!-- Channel + meta -->
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-              <span class="badge bg-primary-subtle text-primary-emphasis">{{ v.channelName }}</span>
-              <span v-if="v.category" class="badge bg-secondary-subtle text-secondary-emphasis">{{ v.category }}</span>
-              <span v-if="v.country"  class="badge bg-light text-muted border">{{ v.country }}</span>
-              <span class="ms-auto badge bg-warning-subtle text-warning-emphasis small">
-                {{ hoursAgo(v.hoursSincePublish) }}
-              </span>
-            </div>
-
-            <!-- Stats row -->
-            <div class="row row-cols-3 text-center small mb-3">
-              <div>
-                <div class="fw-bold">{{ fmt(v.viewCount) }}</div>
-                <div class="text-muted">Views</div>
-              </div>
-              <div>
-                <div class="fw-bold">{{ fmt(v.likeCount) }}</div>
-                <div class="text-muted">Likes</div>
-              </div>
-              <div>
-                <div class="fw-bold">{{ fmt(v.commentCount) }}</div>
-                <div class="text-muted">Comments</div>
-              </div>
-            </div>
-
-            <!-- ViralScore bar -->
-            <div class="mb-2">
-              <div class="d-flex justify-content-between small mb-1">
-                <span class="fw-semibold">ViralScore</span>
-                <span class="fw-bold" :class="scoreColor(v.viralScore)">
-                  {{ pct(v.viralScore) }}
-                </span>
-              </div>
-              <div class="progress" style="height:10px">
-                <div
-                  class="progress-bar"
-                  :class="scoreBarClass(v.viralScore)"
-                  :style="{ width: pct(v.viralScore) }"
-                ></div>
-              </div>
-            </div>
-
-            <!-- Component bars -->
-            <div class="row g-1 small">
-              <div class="col-12">
-                <div class="d-flex justify-content-between">
-                  <span class="text-muted">Velocity</span>
-                  <span>{{ pct(v.viewsVelocity) }}</span>
-                </div>
-                <div class="progress mb-1" style="height:5px">
-                  <div class="progress-bar bg-info" :style="{ width: pct(v.viewsVelocity) }"></div>
-                </div>
-              </div>
-              <div class="col-12">
-                <div class="d-flex justify-content-between">
-                  <span class="text-muted">Acceleration</span>
-                  <span>{{ pct(v.growthAcceleration) }}</span>
-                </div>
-                <div class="progress mb-1" style="height:5px">
-                  <div class="progress-bar bg-warning" :style="{ width: pct(v.growthAcceleration) }"></div>
-                </div>
-              </div>
-              <div class="col-12">
-                <div class="d-flex justify-content-between">
-                  <span class="text-muted">Engagement</span>
-                  <span>{{ pct(v.engagementMomentum) }}</span>
-                </div>
-                <div class="progress" style="height:5px">
-                  <div class="progress-bar bg-success" :style="{ width: pct(v.engagementMomentum) }"></div>
-                </div>
-              </div>
-            </div>
+          <div class="d-flex gap-2">
+            <span class="badge text-bg-light border px-3 py-2">{{ videos.length }} videos</span>
+            <span class="badge text-bg-light border px-3 py-2">Region {{ filters.country || 'IN' }}</span>
           </div>
+        </div>
+      </section>
 
-          <!-- Card footer -->
-          <div class="card-footer bg-transparent border-0 small text-muted pt-1 pb-2">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <span>Scored {{ calcAgo(v.calculatedAt) }} &bull; {{ v.subscribers?.toLocaleString() }} subs</span>
-              <router-link
-                :to="`/creator/${v.creatorId}/latest-video-analysis?videoId=${v.videoId}&videoTitle=${encodeURIComponent(v.title || '')}`"
-                class="btn btn-sm btn-outline-dark"
-              >
-                Analyze with AI
-              </router-link>
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body py-3">
+          <div class="row g-2 align-items-end">
+            <div class="col-lg-2 col-md-4">
+              <label class="form-label small text-muted">Country</label>
+              <select class="form-select form-select-sm" v-model="filters.country" @change="load">
+                <option value="IN">India</option>
+                <option value="US">United States</option>
+                <option value="GB">United Kingdom</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+              </select>
+            </div>
+            <div class="col-lg-3 col-md-4">
+              <label class="form-label small text-muted">Category</label>
+              <select class="form-select form-select-sm" v-model="filters.category" @change="load">
+                <option value="">All</option>
+                <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+              <label class="form-label small text-muted">Top</label>
+              <select class="form-select form-select-sm" v-model.number="filters.topN" @change="load">
+                <option :value="20">20</option>
+                <option :value="35">35</option>
+                <option :value="50">50</option>
+              </select>
+            </div>
+            <div class="col-lg-5 d-flex justify-content-lg-end">
+              <button class="btn btn-sm btn-primary" @click="load" :disabled="loading">
+                <span v-if="loading" class="spinner-border spinner-border-sm me-1"></span>
+                Refresh Live Feed
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      <div v-if="loading" class="text-center py-5">
+        <div class="spinner-border text-primary"></div>
+        <p class="text-muted mt-2 mb-0">Fetching live trending videos from YouTube...</p>
+      </div>
+
+      <div v-else-if="error" class="alert alert-warning">{{ error }}</div>
+
+      <div v-else class="row g-3">
+        <div v-for="(v, idx) in videos" :key="v.videoId" class="col-xl-3 col-lg-4 col-md-6">
+          <article class="video-card h-100">
+            <div class="position-relative">
+              <img v-if="v.thumbnailUrl" :src="v.thumbnailUrl" :alt="v.title" class="video-thumb" />
+              <div v-else class="video-thumb thumb-fallback">YT</div>
+              <span class="badge bg-dark rank-chip">#{{ idx + 1 }}</span>
+            </div>
+            <div class="p-2 p-lg-3 d-flex flex-column h-100">
+              <h6 class="fw-semibold mb-1 text-truncate" :title="v.title">{{ v.title }}</h6>
+              <div class="small text-muted mb-2 text-truncate">{{ v.channelName }}</div>
+
+              <div class="d-flex flex-wrap gap-1 mb-2">
+                <span class="badge text-bg-light border">{{ v.category || 'General' }}</span>
+                <span class="badge text-bg-light border">{{ hoursAgo(v.hoursSincePublish) }}</span>
+                <span class="badge" :class="scoreBadge(v.viralScore)">Score {{ pct(v.viralScore) }}</span>
+              </div>
+
+              <div class="small d-flex justify-content-between text-muted mb-2">
+                <span>{{ fmt(v.viewCount) }} views</span>
+                <span>{{ fmt(v.likeCount) }} likes</span>
+                <span>{{ fmt(v.commentCount) }} comments</span>
+              </div>
+
+              <div class="progress mb-2" style="height:7px">
+                <div class="progress-bar bg-danger" :style="{ width: pct(v.viralScore) }"></div>
+              </div>
+
+              <div class="d-flex gap-2 mt-auto">
+                <button class="btn btn-sm btn-outline-dark flex-grow-1" @click="analyzeVideo(v)">
+                  Analyze with AI
+                </button>
+                <a :href="`https://youtube.com/watch?v=${v.videoId}`" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Watch</a>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
     </div>
+
+    <VideoAiAnalysisDialog ref="videoAiDialog" />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
 import api from '../services/api';
+import VideoAiAnalysisDialog from '../components/VideoAiAnalysisDialog.vue';
 
 const videos     = ref([]);
 const loading    = ref(false);
-const refreshing = ref(false);
 const error      = ref('');
+const videoAiDialog = ref(null);
 
-const filters = reactive({ topN: 50, category: '', country: '' });
+const filters = reactive({ topN: 35, category: '', country: 'IN' });
 
-// Unique category/country lists derived from loaded data
-const categories = ref([]);
-const countries  = ref([]);
+const categories = [
+  'General', 'Music', 'Gaming', 'Sports', 'Entertainment', 'News', 'Education', 'Tech', 'Comedy', 'Travel'
+];
 
 async function load() {
   loading.value = true;
@@ -196,16 +126,10 @@ async function load() {
   try {
     const params = { topN: filters.topN };
     if (filters.category) params.category = filters.category;
-    if (filters.country)  params.country  = filters.country;
+    if (filters.country) params.country = filters.country;
 
     const { data } = await api.get('/videos/trending', { params });
-    videos.value = data;
-
-    // Populate filter dropdowns from all data (first load only)
-    if (!filters.category && !filters.country) {
-      categories.value = [...new Set(data.map(v => v.category).filter(Boolean))].sort();
-      countries.value  = [...new Set(data.map(v => v.country ).filter(Boolean))].sort();
-    }
+    videos.value = Array.isArray(data) ? data : [];
   } catch (e) {
     error.value = e?.response?.data?.message ?? e.message ?? 'Failed to load trending videos.';
   } finally {
@@ -213,17 +137,16 @@ async function load() {
   }
 }
 
-async function refresh() {
-  refreshing.value = true;
-  error.value = '';
-  try {
-    await api.post('/videos/trending/refresh');
-    await load();
-  } catch (e) {
-    error.value = e?.response?.data?.message ?? 'Refresh failed.';
-  } finally {
-    refreshing.value = false;
-  }
+async function analyzeVideo(video) {
+  videoAiDialog.value?.open({
+    videoId: video.videoId,
+    title: video.title,
+    channelName: video.channelName,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    commentCount: video.commentCount,
+    publishedAt: null
+  }, video.channelName);
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────
@@ -247,25 +170,68 @@ function hoursAgo(h) {
   return Math.round(h / 24) + 'd ago';
 }
 
-function calcAgo(dt) {
-  if (!dt) return '';
-  const mins = Math.round((Date.now() - new Date(dt)) / 60000);
-  if (mins < 1)   return 'just now';
-  if (mins < 60)  return mins + 'm ago';
-  return Math.round(mins / 60) + 'h ago';
-}
-
-function scoreColor(s) {
-  if (s >= 0.7) return 'text-danger';
-  if (s >= 0.4) return 'text-warning';
-  return 'text-success';
-}
-
-function scoreBarClass(s) {
-  if (s >= 0.7) return 'bg-danger';
-  if (s >= 0.4) return 'bg-warning';
-  return 'bg-success';
+function scoreBadge(s) {
+  if (s >= 0.7) return 'text-bg-danger';
+  if (s >= 0.4) return 'text-bg-warning';
+  return 'text-bg-success';
 }
 
 onMounted(load);
 </script>
+
+<style scoped>
+.trending-shell {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(239, 68, 68, 0.12), transparent 30%),
+    radial-gradient(circle at 100% 0%, rgba(14, 165, 233, 0.13), transparent 34%),
+    #f8fafc;
+}
+
+.hero {
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: linear-gradient(125deg, #ffffff 0%, #f8fafc 56%, #eff6ff 100%);
+  padding: 1rem 1.2rem;
+}
+
+.hero-kicker {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #991b1b;
+  background: rgba(254, 226, 226, 0.8);
+}
+
+.video-card {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.video-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.rank-chip {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+</style>
