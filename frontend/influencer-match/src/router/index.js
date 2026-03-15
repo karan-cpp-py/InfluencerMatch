@@ -21,6 +21,7 @@ const routes = [
   { path: '/reset-password', component: () => import('../views/ResetPasswordView.vue') },
   { path: '/terms', component: () => import('../views/TermsView.vue') },
   { path: '/plans', component: () => import('../views/PricingPlansView.vue') },
+  { path: '/setup-guides', component: () => import('../views/SetupGuidesView.vue'), meta: { requiresAuth: true } },
   { path: '/notifications', component: () => import('../views/NotificationCenterView.vue'), meta: { requiresAuth: true } },
   { path: '/onboarding', component: () => import('../views/OnboardingHubView.vue'), meta: { requiresAuth: true } },
   { path: '/brand/campaign-onboarding', component: () => import('../views/BrandCampaignOnboardingView.vue'), meta: { requiresAuth: true, role: ['Brand', 'Agency'] } },

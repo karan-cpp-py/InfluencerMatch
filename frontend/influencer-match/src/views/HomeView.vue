@@ -3,31 +3,6 @@
 
     <!-- ══════════════════════════ AUTHENTICATED ══════════════════════════ -->
     <template v-if="token">
-
-      <!-- Personalised Hero -->
-      <header class="auth-hero" :class="`hero-${roleClass}`">
-        <div class="container py-4">
-          <div class="d-flex align-items-center gap-3 flex-wrap">
-            <div class="auth-avatar">{{ roleEmoji }}</div>
-            <div class="flex-grow-1">
-              <p class="mb-0 small text-white" style="opacity:0.72">Welcome back</p>
-              <h2 class="mb-0 fw-bold text-white lh-sm">{{ displayName }}</h2>
-              <span class="role-chip mt-1 d-inline-block">{{ roleLabel }}</span>
-            </div>
-            <router-link :to="primaryCta.to" class="btn btn-light fw-semibold px-4 shadow-sm">
-              {{ primaryCta.label }}
-            </router-link>
-          </div>
-
-          <!-- Quick-launch pills -->
-          <div class="quick-launch mt-4 d-flex flex-wrap gap-2">
-            <router-link v-for="q in quickLinks" :key="q.to" :to="q.to" class="quick-pill">
-              {{ q.icon }} {{ q.label }}
-            </router-link>
-          </div>
-        </div>
-      </header>
-
       <!-- Feature Toolkit -->
       <section class="container py-5">
         <div class="mb-2">
@@ -35,6 +10,15 @@
           <p class="text-muted small mt-1 mb-0">
             Everything built for your <strong>{{ role }}</strong> account — click any card to jump in.
           </p>
+        </div>
+
+        <div class="quick-launch mb-4 d-flex flex-wrap gap-2">
+          <router-link :to="primaryCta.to" class="quick-pill quick-pill-primary">
+            {{ primaryCta.label }}
+          </router-link>
+          <router-link v-for="q in quickLinks" :key="q.to" :to="q.to" class="quick-pill">
+            {{ q.icon }} {{ q.label }}
+          </router-link>
         </div>
 
         <template v-for="(group, gi) in featureGroups" :key="group.label">
@@ -631,12 +615,23 @@ onBeforeUnmount(() => {
 .quick-pill {
   display: inline-flex; align-items: center; gap: 0.3rem;
   padding: 0.28rem 0.82rem; border-radius: 999px;
-  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22);
-  color: #fff; font-size: 0.82rem; font-weight: 500;
-  text-decoration: none; backdrop-filter: blur(6px);
+  background: #ffffff; border: 1px solid rgba(148,163,184,0.38);
+  color: #0f172a; font-size: 0.82rem; font-weight: 600;
+  text-decoration: none;
   transition: background 0.18s ease, transform 0.18s ease;
 }
-.quick-pill:hover { background: rgba(255,255,255,0.26); transform: translateY(-2px); color: #fff; }
+.quick-pill:hover { background: #f8fafc; transform: translateY(-2px); color: #0f172a; }
+
+.quick-pill-primary {
+  color: #ffffff;
+  background: linear-gradient(120deg, #0ea5e9, #2563eb);
+  border-color: #2563eb;
+}
+
+.quick-pill-primary:hover {
+  color: #ffffff;
+  background: linear-gradient(120deg, #0284c7, #1d4ed8);
+}
 
 /* ── Group header ─────────────────────────────────────────────────────── */
 .group-header { display: flex; align-items: center; gap: 0.55rem; }

@@ -36,7 +36,10 @@ The frontend reads the API base URL from an environment variable `VITE_API_URL`.
 Create a `.env` file in `frontend/influencer-match` with contents similar to:
 ```
 VITE_API_URL=https://localhost:60587/api
+VITE_GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/creator-dashboard
 ```
+
+`VITE_GOOGLE_OAUTH_REDIRECT_URI` should exactly match one of your Google OAuth client Authorized redirect URIs.
 
 ### Running
 1. Install dependencies:
@@ -87,7 +90,18 @@ VITE_API_URL=https://localhost:60587/api
 2. Set **Root Directory** to: `frontend/influencer-match`
 3. Set environment variable in Vercel:
    - `VITE_API_URL=https://<your-render-service>.onrender.com/api`
+   - `VITE_GOOGLE_OAUTH_REDIRECT_URI=https://<your-vercel-app>.vercel.app/creator-dashboard`
 4. Deploy.
+
+### Google OAuth Redirect URI (Fixing redirect_uri_mismatch)
+If Creator Dashboard shows `Error 400: redirect_uri_mismatch` on Connect Google:
+1. Open Google Cloud Console > APIs and Services > Credentials.
+2. Edit the OAuth 2.0 Client used by this app.
+3. Add exact Authorized redirect URIs for every frontend domain you use, for example:
+   - `https://influencer-match-rho.vercel.app/creator-dashboard`
+   - `https://your-production-frontend-domain/creator-dashboard`
+4. Ensure `VITE_GOOGLE_OAUTH_REDIRECT_URI` on that frontend deployment exactly matches one of the above.
+5. Save, wait 1-2 minutes, then retry Connect Google.
 
 ### Important
 - Keep secrets only in Render/Vercel environment variables, not in committed files.

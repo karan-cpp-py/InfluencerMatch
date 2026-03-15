@@ -124,9 +124,17 @@ function applyHumanError(error) {
 }
 
 function shouldBroadcastUiError(error) {
+  if (error?.config?.suppressGlobalError) return false;
+
   const status = error?.response?.status;
   if (!status) return true;
   if (status === 401 || status === 403) return false; // handled by dedicated flows
+
+  const endpoint = String(error?.config?.url || '');
+  if (status === 404 && endpoint.includes('/creator/audience-demographics')) {
+    return false;
+  }
+
   return true;
 }
 

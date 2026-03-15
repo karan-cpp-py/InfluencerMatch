@@ -210,6 +210,15 @@
             <p class="text-muted small mb-3">
               Connect once using Google OAuth, then ingest demographics without manually pasting access tokens.
             </p>
+            <div class="alert alert-info py-2 small mb-3">
+              <div class="fw-semibold mb-1">Setup Guide</div>
+              <ol class="mb-0 ps-3">
+                <li>In Google Cloud Console, open your OAuth Client and add this exact Authorized redirect URI:</li>
+                <li><code>{{ oauthRedirectUri }}</code></li>
+                <li>Click <strong>Connect Google</strong>, approve access, then copy the <code>code</code> from redirected URL.</li>
+                <li>Paste code in <strong>Link Code</strong>, then click <strong>Ingest from Connected Account</strong>.</li>
+              </ol>
+            </div>
             <div class="row g-2 mb-2">
               <div class="col-lg-9">
                 <input v-model.trim="oauthCode" class="form-control" placeholder="Paste Google authorization code after consent" />
@@ -604,6 +613,11 @@ const demographicsLoaded = ref(false);
 const connectingGoogle = ref(false);
 const linkingGoogleCode = ref(false);
 const oauthCode = ref('');
+const oauthRedirectUri = computed(() => {
+  const configured = String(import.meta.env.VITE_GOOGLE_OAUTH_REDIRECT_URI || '').trim();
+  if (configured) return configured;
+  return `${window.location.origin}/creator-dashboard`;
+});
 
 // Videos
 const recentVideos = ref([]);
@@ -811,7 +825,7 @@ async function loadDemographics() {
   demographicsLoaded.value = false;
   demographicsError.value = '';
   try {
-    const res = await api.get('/creator/audience-demographics');
+    const res = await api.get('/creator/audience-demographics', { suppressGlobalError: true });
     demographics.value = res.data;
   } catch (e) {
     demographics.value = null;
@@ -862,7 +876,7 @@ async function openGoogleConsent() {
   connectingGoogle.value = true;
   demographicsError.value = '';
   try {
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    const redirectUri = oauthRedirectUri.value;
     const res = await api.post('/creator/audience-demographics/connect-url', { redirectUri });
     const url = res.data?.url;
     if (!url) throw new Error('No OAuth URL returned');
@@ -879,7 +893,7 @@ async function exchangeOAuthCode() {
   linkingGoogleCode.value = true;
   demographicsError.value = '';
   try {
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    const redirectUri = oauthRedirectUri.value;
     await api.post('/creator/audience-demographics/exchange-code', {
       redirectUri,
       code: oauthCode.value

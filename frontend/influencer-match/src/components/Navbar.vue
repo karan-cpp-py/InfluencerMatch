@@ -54,6 +54,10 @@
             <router-link class="nav-link" to="/videos/trending">Trending on YouTube</router-link>
           </li>
 
+          <li v-if="token" class="nav-item">
+            <router-link class="nav-link" to="/setup-guides">Setup Guides</router-link>
+          </li>
+
           <!-- SuperAdmin links -->
           <li v-if="token && role === 'SuperAdmin'" class="nav-item">
             <router-link class="nav-link fw-semibold" to="/admin">⚙️ Admin Panel</router-link>
